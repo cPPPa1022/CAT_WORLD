@@ -41,7 +41,10 @@ function stubFetch(seq) {
 
   const ai = fs.readFileSync(path.join(__dirname, '..', 'src', 'ai.js'), 'utf8');
   ok(/raw = await llmOnceFull\(cfg, messages, curr, onDelta, reason\)/.test(ai), '★ llmJSON 走续写版');
-  ok(/llmOnceFull\(cfg, messages, mt, onDelta, 'high'\)/.test(ai), '★ llmText（扫描分析那一步）走续写版');
+  /* v3.4：这条断言原来要求调用后面**紧跟右括号** —— 而 llmText 现在多传了两个参数
+   （maxCont 位置留 undefined、noJson=true，见 §6.118c：JSON 模式必须由调用方显式关掉）。
+   断言要守的是"走的是续写版这条路"，不是"参数个数恰好五个"，所以模式放宽到不看结尾。 */
+ok(/llmOnceFull\(cfg, messages, mt, onDelta, 'high'/.test(ai), '★ llmText（扫描分析那一步）走续写版');
   ok(/LAST_FINISH = finish \|\| ''/.test(ai) && /LAST_FINISH = fr \|\| ''/.test(ai), '★ 流式和非流式都记 finish_reason');
   ok(/从断掉的地方接着写/.test(ai), '★ 续写指令明说「不要重复、不要重开头」');
   const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
