@@ -174,8 +174,10 @@ header#worldbar > #topbar { display:flex; flex-direction:column; gap:2px; flex:1
    底栏每多一行都在抢场景画的高度（见本文件 §底栏注释：底栏 172px 时场景被裁 2 行），
    所以**没有念头时整行 display:none**，一点都不占。 */
 #thoughts { display:none; }
-#thoughts.has { display:flex; align-items:center; gap:var(--sp-4); flex-wrap:nowrap; overflow-x:auto; min-height:24px; margin-right:var(--sp-3); }
+#thoughts.has { display:flex; align-items:center; gap:var(--sp-2); flex-wrap:nowrap; overflow-x:auto; min-height:24px; margin-right:var(--sp-3); }
 #thoughts .th-h { flex:none; color:var(--fg-3); font-size:var(--fs-caption); letter-spacing:.08em; }
+/* 念头之间的分隔符：不可点（它不在按钮里），比念头本身更暗一档 —— 它只是停顿，不是内容 */
+#thoughts .th-sep { flex:none; color:var(--fg-3); font-size:var(--fs-caption); }
 #thoughts .th-i {
   all:unset; cursor:pointer; flex:none;
   font-size:var(--fs-caption); color:var(--fg-2);

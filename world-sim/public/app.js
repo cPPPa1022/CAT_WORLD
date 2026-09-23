@@ -1349,9 +1349,14 @@ function renderThoughts() {
   c.classList.toggle('has', list.length > 0);
   if (!list.length) return;
   c.appendChild(el('span', 'th-h', '我心里'));
-  for (const s of list) {
-    const b = el('button', 'th-i', String(s));
-    b.onclick = () => { const cmd = $('#cmd'); if (cmd) { cmd.value = String(s); cmd.focus(); } };
+  for (let i = 0; i < list.length; i++) {
+    /* v3.3：念头之间要有**看得见的分隔**。第一版只靠 16px 间距，六条连着读下来糊成一坨
+       （实测截图："…我兜里应该够 先掏钱，还是…"）—— 这正是用户抱怨过的"乱"。
+       分隔符必须是**不可点**的 span（不能写成 ::before）：否则它落在按钮的可点区域里，
+       点"·"也会把那条念头写进输入框。符号沿用台词小字那一套的 ·（同一个视觉语言）。 */
+    if (i) c.appendChild(el('span', 'th-sep', '·'));
+    const b = el('button', 'th-i', String(list[i]));
+    b.onclick = () => { const cmd = $('#cmd'); if (cmd) { cmd.value = String(list[i]); cmd.focus(); } };
     c.appendChild(b);
   }
 }
