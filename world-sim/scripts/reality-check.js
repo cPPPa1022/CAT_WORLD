@@ -17,7 +17,8 @@ const path = require('node:path');
 const arg = process.argv.slice(2).filter(x => x !== '--assert');
 const ASSERT = process.argv.includes('--assert');
 const root = arg[0] || path.join(process.env.APPDATA || '', 'world-sim', 'data');
-const wdir = path.join(root, 'worlds');
+/* 两种布局都认：用户根 <root>/worlds，开发根 <root>/data/worlds（WORLD_SIM_DATA 指到外层时） */
+const wdir = fs.existsSync(path.join(root, 'worlds')) ? path.join(root, 'worlds') : path.join(root, 'data', 'worlds');
 
 if (!fs.existsSync(wdir)) {
   console.log('找不到世界目录：' + wdir);
