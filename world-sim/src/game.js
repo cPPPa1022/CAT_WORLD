@@ -1060,8 +1060,11 @@ async function runTurn(data, text, cfg, opts) {
     // 动态思考档位：0 token 打分（多方在场/极端冲突/关系张力/离线积压/上回合打回）
     const think = AI.thinkBudget(data, intent, ctx, __hardLast);   // v1.97 X7：用回合开头取出的"上回合打回"
     if (ctx) ctx.think = think;
-    out = await AI.llmJSON(cfg, messages, () => AI.mockMain(data, ctx), Math.min(32768, AI.cfgMax(cfg)), (opts && opts.onDelta) || undefined, think);
-    if (out && out.__fallback) out = out.value;
+    /* v2.09：主叙事这一路如果落兜底，**玩家必须能知道**（原来完全静默）。
+       var（不是 let）：它在函数作用域里，要带到下面的 return 去。 */
+    var __fellBack = false;
+    out = await AI.llmJSON(cfg, messages, function () { __fellBack = true; return AI.mockMain(data, ctx); }, Math.min(32768, AI.cfgMax(cfg)), (opts && opts.onDelta) || undefined, think);
+    if (out && out.__fallback) { __fellBack = true; out = out.value; }
     // ---- 叙事主权闭环：现实化/说教检测命中 → 带重写要求重试一次（仅一次，不循环） ----
     const guardHit = (out && !out.__fallback) ? AI.guardCheck(out) : null;
     if (guardHit && __aiExtra < __aiBudget) { __aiExtra++;
@@ -1400,7 +1403,9 @@ async function runTurn(data, text, cfg, opts) {
      一条"回她？"混进去，等于让 AI 以为世界里有人这么说过。它走视图里的单独一档（见 buildView 的 tutor）。 */
   if (tutorHint) data.current.tutorHint = { text: String(tutorHint).slice(0, 160), turn: data.current.turnN || 0 };
   view2 = buildView(data);
-  return { intent, frame: out.frame, errors: v.errors, applied, fresh, recalled: recalled || [], view: view2 };
+  return { intent, frame: out.frame, errors: v.errors, applied, fresh, recalled: recalled || [], view: view2,
+    /* v2.09：这一段是不是兜底生成的 —— 界面照实说，不再让玩家（和作者）自己猜。 */
+    fallback: __fellBack ? '这一段是兜底生成的（模型没回应，引擎用确定性规则顶上了）' : '' };
 }
 
 // ---------- 消息异步回复（§9：物理运行时算"何时回"，消息 AI 判"回不回/回什么"，到期才生成） ----------

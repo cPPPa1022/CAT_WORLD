@@ -279,6 +279,16 @@ async function llmText(cfg, messages, mt, onDelta) {
   const raw = await llmOnceFull(cfg, messages, mt, onDelta, 'high');   // v1.77 接 onDelta；v1.78 截断自动续写
   return stripThink(String(raw == null ? '' : raw));
 }
+/* v2.09：兜底必须**可识别**。
+   原来 llmJSON 失败时返回 { __fallback:true, value:<代码编的值> } —— 和真值同形，
+   调用方（以及界面、以及作者）分不出"这是 AI 写的"还是"这是代码顶上的"。
+   实测代价：开局编译整个落兜底，界面照常展示，还盖一个「设定核对：相容」的章。
+   现在每条兜底都单独记进降级账（where 带「:兜底」），/api/diag 能把
+   "模型没回应"和"解析出错"分开看 —— 而不是混在同一堆 34 条里。 */
+function fbOf(fallback, err) {
+  try { DEG.hit('ai.js:兜底', new Error(String(err == null ? '' : err).slice(0, 120))); } catch (e) {}
+  return { __fallback: true, err: String(err == null ? '' : err), value: fallback() };
+}
 async function llmJSON(cfg, messages, fallback, mt, onDelta, reason) {
   let curr = mt !== undefined ? mt : cfgMax(cfg);
   let raw;
@@ -290,7 +300,7 @@ async function llmJSON(cfg, messages, fallback, mt, onDelta, reason) {
       try { raw = await llmOnce(cfg, messages, curr, undefined, reason); err0 = ''; break; } catch (e2) { err0 = String(e2.message || e2); }
     }
     if (err0 || !reduced) {
-      if (fallback) return { __fallback: true, err: err0 || 'reduced fail', value: fallback() };
+      if (fallback) return fbOf(fallback, err0 || 'reduced fail');
       throw e;
     }
   }
@@ -299,13 +309,13 @@ async function llmJSON(cfg, messages, fallback, mt, onDelta, reason) {
     console.error('[llm] 首次解析失败，重试。原文前400:', raw.slice(0, 400));
     const retry = messages.concat([{ role: 'user', content: '上一次输出无法解析或不完整。请严格按规定输出完整 JSON（可含中文），不要截断、不要代码块、不要多余文字。' }]);
     try { raw = await llmOnceFull(cfg, retry, undefined, undefined, reason); } catch (e2) {
-      if (fallback) return { __fallback: true, err: String(e2.message || e2), value: fallback() };
+      if (fallback) return fbOf(fallback, e2.message || e2);
       throw e2;
     }
     try { return sweepThink(JSON.parse(stripJson(raw))); }
     catch (e3) {
       console.error('[llm] 重试仍失败，回退。原文前400:', raw.slice(0, 400));
-      if (fallback) return { __fallback: true, err: String(e3.message || e3), value: fallback() };
+      if (fallback) return fbOf(fallback, e3.message || e3);
       throw e3;
     }
   }

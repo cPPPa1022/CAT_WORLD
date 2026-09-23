@@ -1400,6 +1400,8 @@ async function submit(text) {
       if (result && result.view) {
         refresh(result.view);
         if (result.recalled && result.recalled.length) showRecall(result.recalled);
+        /* v2.09：这一回合如果是兜底生成的，照实说 —— 不再让玩家以为世界回应了他。 */
+        if (result.fallback) toast(result.fallback, true);
         ok = true;
       }
     } else clearTimeout(wdog);
@@ -1408,6 +1410,7 @@ async function submit(text) {
       const r = await api('/api/turn', { text });
       refresh(r.view);
       if (r.recalled && r.recalled.length) showRecall(r.recalled);
+      if (r.fallback) toast(r.fallback, true);   // v2.09：兜底不再静默
       ok = true;
     }
   } catch (e) {
@@ -1417,6 +1420,7 @@ async function submit(text) {
       const r = await api('/api/turn', { text });
       refresh(r.view);
       if (r.recalled && r.recalled.length) showRecall(r.recalled);
+      if (r.fallback) toast(r.fallback, true);   // v2.09：兜底不再静默
       ok = true;
     } catch (e2) {
       /* v1.98 · P0-2：★ 被**世界锁**拒绝不是"回合失败"。

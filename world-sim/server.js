@@ -1374,7 +1374,7 @@ const server = http.createServer(async (req, res) => {
             onDelta: (d) => { try { res.write('data: ' + JSON.stringify({ d: d }) + '\n\n'); } catch (e2) { DEG.hit("server.js", e2); } }
           });
           persist(); autoSnap(); traceAppend();
-          try { res.write('data: ' + JSON.stringify({ view: r.view, recalled: r.recalled || [], intent: r.intent, applied: r.applied, errors: r.errors, fresh: r.fresh }) + '\n\n'); } catch (e2) { DEG.hit("server.js", e2); }
+          try { res.write('data: ' + JSON.stringify({ view: r.view, recalled: r.recalled || [], intent: r.intent, applied: r.applied, fallback: r.fallback || '', errors: r.errors, fresh: r.fresh }) + '\n\n'); } catch (e2) { DEG.hit("server.js", e2); }
         } catch (e2) {
           try { res.write('data: ' + JSON.stringify({ err: String(e2.message || e2) }) + '\n\n'); } catch (e3) { DEG.hit("server.js", e3); }
         }
