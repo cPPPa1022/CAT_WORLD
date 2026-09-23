@@ -249,6 +249,29 @@ function kindOf(reason) { const s = String(reason || ''); for (const r of KIND_B
 // 自由度三档：校验器=【限制区】的执行者（白名单/地址存在/因果/烈度/一致性）。
 // 【自由区】在 prompt 注明、【默认区】未注明——一律放行：默认自由，越线才拦。
 // 第 4 个形参 ctx 目前**零引用**：留着是给"第二遍校验"用的回合内状态入口（P0-4 的修正轮），别删。
+/* ---------- v2.10「有主」：可观察物必须挂在**已经存在的因**上 ----------
+   为什么加：原来 `人物出现` 只要求 cause 是**非空字符串**，于是 AI 写一句「剧情需要」
+   就能让一个陌生人凭空落地 —— 而 director.js 里那个默认值**就是** '剧情需要'。
+   实测：一个"恰好路过的侦察兵 / 恰好知道情报的线人"是模型最顺手的拐杖。
+
+   现在：causeRef 必须**解析得到**一个已经存在的东西（三选一，纯查表，0 token）：
+     · entity —— 已存在的实体 id（"周师傅带来的"）
+     · ledger —— 已有账本条目 id（"北边下来的人越来越多"那条镜头外事件；**玩家可能从没见过**）
+     · beyond —— 世界上游事实 id（更远的事实，玩家永远够不到）
+   解析不到 → 拒绝。**你要造人，先得有"谁把他带来的"这件事已经存在于世界上。**
+
+   ★ 它**不禁止偶然**：`subai.js` 的镜头外事件是纯代码池（0 token），一直在产出"偶然"，
+   而那些偶然在玩家视图之外 —— 所以**世界知道因果，玩家看到偶然**。这正是信息差。 */
+function resolveAnchor(data, ref) {
+  const r = (ref && typeof ref === 'object') ? ref : { kind: 'auto', id: String(ref == null ? '' : ref).trim() };
+  const id = String(r.id || r.ref || '').trim();
+  if (!id) return { ok: false, why: '引用是空的' };
+  const kind = String(r.kind || 'auto');
+  if ((kind === 'entity' || kind === 'auto') && data.entities && data.entities[id]) return { ok: true, kind: 'entity', id: id };
+  if ((kind === 'ledger' || kind === 'auto') && (data.ledger || []).some(l => l && String(l.id) === id)) return { ok: true, kind: 'ledger', id: id };
+  if ((kind === 'beyond' || kind === 'auto') && (data.beyond || []).some(b => b && String(b.id) === id)) return { ok: true, kind: 'beyond', id: id };
+  return { ok: false, why: '世界上找不到这个因（' + kind + ':' + id + '）' };
+}
 function validateUpdates(data, updates, frame, ctx) {
   const allowed = []; const errors = []; const rejected = [];
   let fxSeen = 0;   // 本回合已放行的演出数（≤1，见 fx.js）
@@ -261,12 +284,24 @@ function validateUpdates(data, updates, frame, ctx) {
     if (!UPDATE_TYPES.includes(u.type)) { deny('白名单外类型: ' + u.type); continue; }
     const tid = u.target;
     const isEvent = (u.type === '事件开始' || u.type === '事件结束');
-    if (tid && !isEvent && !getEntity(data, tid) && tid !== 'player') { deny('地址不存在: ' + tid); continue; }
+    /* ★ v2.10 修（真 bug）：`人物出现` 的 target **按契约就是"新 id"**（contract.js:72 与提示词都这么写），
+       而这一行原来先把"不存在的 target"全拒了 —— 于是下面那段专门给新人物写的分支
+       （必须带 spawn.name / relation / 可解析的因）**永远跑不到**。
+       后果：**「AI 造新角色」这条路是死的**，game.js:512-547 的 applySpawn 是死代码，
+       而 195 条断言全绿（没有任何脚本测过"造一个新人成功"）。
+       修法：把 `人物出现` 加进"允许 target 尚不存在"的名单（事件本来就在这份名单里）。 */
+    const mayCreate = (u.type === '人物出现');
+    if (tid && !isEvent && !mayCreate && !getEntity(data, tid) && tid !== 'player') { deny('地址不存在: ' + tid); continue; }
     if (u.type === '人物出现' && !getEntity(data, u.target)) {
       const sp = u.spawn || {};
       if (!sp.name) { deny('新人物出现必须携带 spawn.name'); continue; }
-      if (!u.cause) { deny('新人物出现必须带因果（因谁因何事出现）'); continue; }
       if (!u.relation) { deny('新人物出现必须声明与玩家/已知人物的关系（relation）'); continue; }
+      /* v2.10「有主」：cause 从"非空字符串"升级为"必须解析得到的因"。
+         老写法（随便一句人话）现在会被拒 —— 这正是要消灭的"空降"。
+         要写人话，就把人话放 cause，把锚放 causeRef。 */
+      const anchor = resolveAnchor(data, u.causeRef || u.cause);
+      if (!anchor.ok) { deny('新人物出现必须挂在已有的因上（causeRef 指向 entity/ledger/beyond）：' + anchor.why); continue; }
+      u._anchor = anchor;
     }
     if (u.type === '印象更新' && !getEntity(data, u.target)) { deny('印象更新目标不存在'); continue; }
     if (u.type === '记忆新增') {

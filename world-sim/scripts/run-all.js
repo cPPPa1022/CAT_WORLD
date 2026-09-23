@@ -29,6 +29,7 @@ const T = [
   //        因为它量的是"产物"，在一份全新的临时数据根里本来就该全是 0。
   //        手动跑（默认扫用户存档）：node scripts/reality-check.js
   //        要它变红（当发布闸门）：node scripts/reality-check.js --assert
+  ['anchor-check.js', 'A', 30],   // v2.10「有主」：可观察物必须挂在已有的因上（顺带修了"造人这条路是死的"）
   ['reality-check.js', 'D', 30],
   ['dist-check.js', 'A', 30],   // v2.06：**交付副本 == 源码**（漏同步 = 源码修好了、用户打开还是老样子，而全部断言全绿）
   ['name-gate-check.js', 'A', 30],   // v2.06：名字门控出口（P1-1 E1/E2/E5/E6/E7b —— 没见过的人的名字到不了玩家眼前）
