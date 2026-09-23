@@ -174,14 +174,30 @@ async function compile(data, cfg, opts) {
   if (us.length) {
     try {
       const rec = BUS.commit(data, [{ kind: 'update', updates: us }], { t: data.current.time });
-      applied = (rec && rec.applied) || 0;
+      /* ★ v2.08 修（真 bug，骗了很久）：这里原来读 `rec.applied` ——
+         而 BUS.commit 的返回是 { id, committed[], rejected[], clockDelta, ledgerIds[] }，
+         **没有顶层 applied**（计数在 committed[i].applied 里）。
+         于是 applied **恒为 0** → 每一次开局编译都走失败分支 → `openingHow` **永远是 'fallback'**，
+         哪怕 AI 的提案全部落库了（实测：存档 framework.log 里有 by:'ai' 的律，同一份存档却写 openingHow=fallback）。
+         这是"世界包越完整、开局编译越像失败"的根源 —— 也是一直读到假失败信号的根源。 */
+      applied = (rec && Array.isArray(rec.committed) ? rec.committed : [])
+        .reduce((s, c) => s + (Number(c && c.applied) || 0), 0);
       dropped = (rec && rec.rejected && rec.rejected.length) || 0;
     } catch (e) { err = String((e && e.message) || e); DEG.hit('opening.js', e); }
   }
   if (!applied) {
-    const fb = fallback(data);
-    if (fb.length) { try { BUS.commit(data, [{ kind: 'update', updates: fb }], { t: data.current.time }); applied = fb.length; } catch (e) { DEG.hit('opening.js', e); } }
-    mark(data, 'fallback', err || (out ? 'AI 的输出没有一条能落' : '超时或空返回'));
+    /* v2.08：没落库**有两种完全不同的原因**，原来都记 'fallback'（看起来像 AI 挂了）：
+       ① AI 真失败：形状认不出（us 为空）/ 提案被校验器全拒 / 超时；
+       ② 世界包已经把该填的都填好了：执行器"只补空槽位"，于是**它无事可做** —— 这不是错误。 */
+    const noop = !!(out && us.length > 0 && dropped === 0);
+    if (noop) {
+      mark(data, 'noop', '世界包已把该填的填好了：' + us.length + ' 条提案没有一条需要写（开局编译无事可做，不是失败）');
+    } else {
+      const fb = fallback(data);
+      if (fb.length) { try { BUS.commit(data, [{ kind: 'update', updates: fb }], { t: data.current.time }); applied = fb.length; } catch (e) { DEG.hit('opening.js', e); } }
+      const why = err || (out ? (us.length ? '提案被校验器全数拒绝' : 'AI 返回了内容，但形状认不出（toUpdates 空）') : '超时或空返回');
+      mark(data, 'fallback', why);
+    }
   } else {
     mark(data, 'ai', '开局编译：' + applied + ' 条落库' + (dropped ? '，' + dropped + ' 条被校验器拒' : ''));
   }

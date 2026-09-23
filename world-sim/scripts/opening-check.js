@@ -95,6 +95,42 @@ const bogus = FW.applyProposal(d6, { slot: 'rule', name: '速度', form: 'x3', w
 ok(bogus && bogus.ok === false, '★ 但"算盘"照样被拒（律只允许 enum/bool/range）');
 ok(!('setLevel' in FW) && !('level' in FW), '★ 框架不再导出 setLevel/level —— 权限日志不会再出现假的 by:player');
 
-console.log('');
-console.log('==== ' + pass + ' passed, ' + fail + ' failed ====');
-process.exit(fail ? 1 : 0);
+/* ⑧ ★ compile() 自己的成败判定（v2.08 新增）
+   这条断言本该早就有。原 bug：`applied` 读的是 BUS.commit 返回里**不存在**的顶层字段，
+   于是恒为 0，**每一次开局编译都被记成 fallback**，而功能其实是好的（存档里 framework.log
+   有 by:'ai' 的律，同一份存档却写 openingHow=fallback）—— 一个假的失败信号。
+   为什么以前没抓到：这份脚本验的全是"翻译层 / 校验 / 落账"这些**机械部分**，
+   **从没验过 compile() 自己的成败判定**；而 compile 要调 AI，于是被留给了"实跑"。
+   解法：给 AI.llmJSON 打桩 —— 不联网、0 token，也能把这条链验完。 */
+(async () => {
+  const AI = require('../src/ai');
+  const realJSON = AI.llmJSON;
+  const cfg = { llm: { baseURL: 'http://stub', apiKey: 'k', model: 'm', maxTokens: 4096 } };  // isLive 要求三者非空
+
+  // ① AI 正常返回 + 槽位是空的 → 必须记 'ai'
+  const dA = mk();
+  dA.entities.player.profile.identity = {};
+  AI.llmJSON = async () => ({ player: { fields: { 身份: '供销社会计' } } });
+  const rA = await OPEN.compile(dA, cfg);
+  ok(dA.meta.openingHow === 'ai', '★ AI 落了库 → openingHow 必须是 "ai"，不许是 "fallback"（实得 ' + dA.meta.openingHow + '）');
+  ok(rA.applied >= 1, 'compile 报告的 applied ≥ 1（实得 ' + rA.applied + '）');
+
+  // ② AI 提案全部命中"已有内容" → 记 'noop'（无事可做），不是失败
+  const dB = mk();
+  dB.entities.player.profile.identity = { 身份: '镇上的会计' };
+  AI.llmJSON = async () => ({ player: { fields: { 身份: '另一种写法' } } });
+  await OPEN.compile(dB, cfg);
+  ok(dB.meta.openingHow === 'noop', '★ 无事可做 → "noop"，不是 "fallback"（实得 ' + dB.meta.openingHow + '）');
+
+  // ③ AI 形状认不出（toUpdates 产空）→ 才是真失败，且要说清原因
+  const dC = mk();
+  AI.llmJSON = async () => ({ 完全不是那个形状: 1 });
+  await OPEN.compile(dC, cfg);
+  ok(dC.meta.openingHow === 'fallback' && /形状认不出/.test(String(dC.meta.openingNote || '')),
+    '★ 形状认不出 → "fallback" 且写明原因（实得 ' + dC.meta.openingHow + ' / ' + String(dC.meta.openingNote || '').slice(0, 24) + '）');
+
+  AI.llmJSON = realJSON;
+  console.log('');
+  console.log('==== ' + pass + ' passed, ' + fail + ' failed ====');
+  process.exit(fail ? 1 : 0);
+})();
