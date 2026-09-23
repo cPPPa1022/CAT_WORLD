@@ -15,7 +15,9 @@ const path = require('node:path');
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  OK   ' + m); } else { fail++; console.log('  FAIL ' + m); } };
-const mk = () => JSON.parse(JSON.stringify(W.buildDemoWorld()));
+/* 注意：JSON 往返会把 data.id 这个**函数**剥掉（framework-check 的 mk 里专门补了回来）。
+   不补的话，任何走 ledgerPush 的路径都会以 "data.id is not a function" 静默失败 —— 我第一版就栽在这。 */
+const mk = () => { const d = JSON.parse(JSON.stringify(W.buildDemoWorld())); d.id = (p) => p + '_a' + Math.random().toString(36).slice(2, 7); d.current.turnN = 1; return d; };
 const spawn = (extra) => Object.assign({
   type: '人物出现', target: 'npc_新面孔', relation: '陌生人',
   spawn: { name: '一个穿军装的年轻人', appearance: '靴子磨破了' },
@@ -92,6 +94,35 @@ console.log('[5] 给规矩必须同时给工具（资料包里要有可引用的
   ok(/镜头外近况\(你不在场时发生的\)'[\s\S]{0,220}l\.id/.test(aiSrc),
     '★ 资料包的「镜头外近况」带上条目 **id**（否则 AI 看得见那些事、却拿不到可引用的东西）');
   ok(/causeRef/.test(aiSrc), '★ 提示词里写了 causeRef 的用法');
+}
+
+console.log('');
+console.log('[6] ★ 上游用尽即拒（宽度也要有上限）');
+{
+  /* 没有上限的话，一个「北方战事」能造出无限个逃兵 —— 那比"空降一个"还假。 */
+  const d = mk();
+  d.beyond = [{ id: 'by_war2', what: '北方战事打输了', visible: 'secret', spawned: 2, cap: 2 }];
+  const v = RT.validateUpdates(d, [spawn({ cause: '北方战事打输了，有人往南逃', causeRef: { kind: 'beyond', id: 'by_war2' } })], {}, {});
+  ok(v.allowed.length === 0 && /已经用尽/.test(v.errors.join('|')), '★ 兑现满 cap -> 拒（否则一个战事造出无限逃兵）');
+
+  const d2 = mk();
+  d2.beyond = [{ id: 'by_w3', what: '北方战事打输了', visible: 'secret', spawned: 1, cap: 2 }];
+  const v2 = RT.validateUpdates(d2, [spawn({ cause: '北方战事打输了，有人往南逃', causeRef: { kind: 'beyond', id: 'by_w3' } })], {}, {});
+  ok(v2.allowed.length === 1, '★ 还没满 -> 过');
+}
+
+console.log('');
+console.log('[7] 「世界上游」这一类真的接通了（契约 <-> 执行器 <-> 账本）');
+{
+  const C = require('../src/contract');
+  const G = require('../src/game');
+  ok(C.UPDATE_TYPE_NAMES.indexOf('世界上游') >= 0, '契约里有「世界上游」这一类');
+  const d = mk();
+  const n0 = (d.beyond || []).length;
+  const applied = G.applyUpdates(d, [{ type: '世界上游', what: '北方战事，败局已定', yields: ['逃兵', '难民'], cap: 2 }], d.current.time);
+  ok(applied === 1 && (d.beyond || []).length === n0 + 1, '★ 执行器能落库（beyond 多了一条）');
+  ok(d.beyond[0] && d.beyond[0].cap === 2 && d.beyond[0].visible === 'secret', '默认 secret、cap 生效');
+  ok((d.ledger || []).some(l => l.type === '世界上游'), '落账（可追溯）');
 }
 
 console.log('');

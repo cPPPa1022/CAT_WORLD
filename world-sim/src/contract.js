@@ -87,7 +87,13 @@ const UPDATE_TYPES = [
   /* v3.1 · 开局编译专用（用户 2026-09-19 定的第 4 条）：把"世界的声明"落成"这个人的字段"。
      为什么必须单独一类：白名单原来只有"本回合发生了什么"，没有"把这个人的档案补全"——
      于是生成世界里，玩家的身份/样貌/性格、NPC 的关系、谁知道谁，全都没人写。 */
-  { type: '设定补全',    exec: 'applySettingFill', hint: 'target + fields{槽位:值} + why（可选 relations[{with,tone,how}]）：**只补空字段**，已有的一字不改；不新增实体；不许占位串' }
+  { type: '设定补全',    exec: 'applySettingFill', hint: 'target + fields{槽位:值} + why（可选 relations[{with,tone,how}]）：**只补空字段**，已有的一字不改；不新增实体；不许占位串' },
+  /* v2.11 ·「有主」的最上游（用户拍板）。为什么必须单独一类：
+     新人物/新文档/新物品只能挂在"**已经存在的因**"上，而"因"的尽头需要一个
+     **能被写下、能被引用、玩家却多半永远够不到**的东西。
+     它不演给玩家看 —— 它是"世界知道而玩家不知道"的那一层（三投影的第一投影）。
+     cap = 这条上游最多兑现几次：没有它，一个「北方战事」能造出无限个逃兵。 */
+  { type: '世界上游',    exec: 'applyBeyond', hint: 'what + yields[] + visible(public|secret) + cap：世界上正在发生的**远方大事**（远处的战事/上游的大水/别处的行情）。它是「有主」的最上游 —— 新人物/新文档/新物品的 causeRef 可以挂到它的 id 上；玩家多半永远够不到它，只能看到它的下游' }
 ];
 
 const UPDATE_TYPE_NAMES = UPDATE_TYPES.map(function (x) { return x.type; });

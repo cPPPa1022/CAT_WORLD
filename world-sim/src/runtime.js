@@ -340,6 +340,15 @@ function validateUpdates(data, updates, frame, ctx) {
       /* v2.10.1：锚存在还不够 —— 还要说得出关系（见 anchorSpeaks）。 */
       const spoke = anchorSpeaks(anchor, u.cause, data);
       if (!spoke.ok) { deny('新人物出现：' + spoke.why); continue; }
+      /* v2.11：**宽度也要有上限**。一条上游若能被无限兑现，一个「北方战事」
+         就能造出无限个逃兵 —— 那比"空降一个"还假。用尽即拒（并且该结算了）。 */
+      if (anchor.kind === 'beyond') {
+        const b = (data.beyond || []).find(x => x && String(x.id) === anchor.id);
+        if (b && (Number(b.spawned) || 0) >= (b.cap == null ? 2 : Number(b.cap))) {
+          deny('这条世界上游已经用尽了（cap=' + (b.cap == null ? 2 : b.cap) + '）：「' + String(b.what || '').slice(0, 20) + '」—— 换一条因，或者让这条线结算');
+          continue;
+        }
+      }
       u._anchor = anchor;
     }
     if (u.type === '印象更新' && !getEntity(data, u.target)) { deny('印象更新目标不存在'); continue; }

@@ -467,6 +467,31 @@ function applySettingFill(data, u, nowIso) {
   if (wrote) ledgerPush(data, { t: nowIso, type: '设定补全', target: target, desc: why || '开局编译', cause: why || null, d: { target: target, wrote: wrote, rejected: rejected.slice(0, 8) } });
   return { applied: wrote, rejected: rejected };
 }
+/* ---------- 世界上游（v2.11 ·「有主」的最上游） ----------
+   玩家多半永远够不到的一层：远处的战事、上游的大水、别处的行情。
+   它存在的意义**不是演给玩家看**，而是给「有主」提供最上游的锚 ——
+   新人物/新文档/新物品挂到它上面时，**玩家只看到下游，世界知道因果**。
+   cap：这条上游最多兑现几次。没有上限的话，一个「北方战事」能造出无限个逃兵，
+   那比"空降一个"还假。 */
+function applyBeyond(data, u, nowIso) {
+  data.beyond = data.beyond || [];
+  const what = String((u && u.what) || '').trim().slice(0, 80);
+  if (!what) return { applied: 0, rejected: ['empty_what'] };
+  const vis = String(u.visible || 'secret') === 'public' ? 'public' : 'secret';
+  const cap = Math.max(1, Math.min(5, Number(u.cap) || 2));
+  let b = String(u.id || '').trim() ? data.beyond.find(x => x && String(x.id) === String(u.id).trim()) : null;
+  if (b) { b.what = what; b.visible = vis; if (Array.isArray(u.yields)) b.yields = u.yields.slice(0, 8); }
+  else {
+    b = { id: String(u.id || '').trim() || (typeof data.id === 'function' ? data.id('by') : ('by_' + Date.now().toString(36))),
+      what: what, yields: (Array.isArray(u.yields) ? u.yields : []).slice(0, 8),
+      visible: vis, spawned: 0, cap: cap, t: nowIso };
+    data.beyond.push(b);
+    if (data.beyond.length > 12) data.beyond.shift();   // 上限：远方大事不该越积越多
+  }
+  ledgerPush(data, { t: nowIso, type: '世界上游', target: b.id, desc: b.what, cause: null, d: { beyondId: b.id, visible: b.visible } });
+  try { MF.record(data, { kind: '世界上游', id: b.id, name: b.what, schema: 'fw.beyond.v1', by: 'ai', note: String(u.why || u.cause || '').slice(0, 60) }); } catch (e) { DEG.hit('game.js', e); }
+  return { applied: 1, rejected: [] };
+}
 function applyUpdates(data, updates, nowIso) {
   ensureKnowledge(data);
   let applied = 0;
@@ -542,10 +567,19 @@ function applyUpdates(data, updates, nowIso) {
         if (!data.knowledge.knownPeople.includes(npcId)) { data.knowledge.knownPeople.push(npcId); }
         ensureImp(data, npcId);
         data.impressions[npcId].stage = 1; data.impressions[npcId].seen = sp.appearance || '一个陌生面孔'; data.impressions[npcId].nameKnown = sp.name;
-        ledgerPush(data, { t: nowIso, type: '人物出现', target: sp.name, desc: (sp.name + ' 出现' + (u.cause ? '——' + u.cause : '')), cause: u.cause || null });
+        ledgerPush(data, { t: nowIso, type: '人物出现', target: sp.name, desc: (sp.name + ' 出现' + (u.cause ? '——' + u.cause : '')), cause: u.cause || null,
+          d: { anchor: (u._anchor && u._anchor.kind) || '', anchorId: (u._anchor && u._anchor.id) || '' } });
+        /* v2.11：这条人物是从哪条上游兑现出来的 —— 记账，并给那条上游计数（cap 靠它） */
+        if (u._anchor && u._anchor.kind === 'beyond') {
+          const bz = (data.beyond || []).find(x => x && String(x.id) === u._anchor.id);
+          if (bz) bz.spawned = (Number(bz.spawned) || 0) + 1;
+        }
         try { MF.record(data, { kind: '人物', id: npcId, name: sp.name, schema: 'ent.person.v1', by: 'ai', note: (sp.surface || u.cause || '') }); } catch (e) { DEG.hit("game.js", e); }
         applied++;
         }
+      } else if (u.type === '世界上游') {
+        const rb = applyBeyond(data, u, nowIso);
+        if (rb && rb.applied) applied++;
       } else if (u.type === '设定补全') {
         const r = applySettingFill(data, u, nowIso);
         if (r && r.applied) applied++;
