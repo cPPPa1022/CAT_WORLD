@@ -1,0 +1,36 @@
+// img-kind-check.js — 立绘/场景分档是否真的走到了任务上（v1.65b）
+'use strict';
+const path = require('path'); const os = require('os'); const fs = require('fs');
+const TMP = path.join(os.tmpdir(), 'ws-imgkind-' + Date.now());
+process.env.WORLD_SIM_DATA = TMP; fs.mkdirSync(TMP, { recursive: true });
+const S = require('../src/scheduler');
+const G = require('../src/game');
+const { buildDemoWorld } = require('../src/world');
+let pass = 0, fail = 0;
+const ok = (c, m) => { if (c) { pass++; console.log('  OK   ' + m); } else { fail++; console.log('  FAIL ' + m); } };
+console.log('');
+console.log('立绘 / 场景分档 —— kind 必须一路走到任务上（否则立绘被当场景画）');
+(async function () {
+  const cfg = { image: { enabled: true, mode: 'zit', aiPrompt: false } };
+  const d = buildDemoWorld();
+  const who = Object.keys(d.entities).filter(id => d.entities[id].type === 'person').slice(0, 1);
+  await S.dispatch(d, cfg, 'image', { img: { kind: 'portrait', who: who, state: '此刻：平静', scene: '屋里', note: '' } });
+  const t1 = d.current.imgTasks.slice(-1)[0];
+  ok(t1 && t1.kind === 'portrait', '★ 立绘任务带上 kind=portrait（' + (t1 && t1.kind) + '）');
+  ok(!!t1.prompt, '立绘提示词装配好了（' + String(t1.prompt || '').slice(0, 40) + '…）');
+  await S.dispatch(d, cfg, 'image', { img: { who: who, state: '此刻：平静', scene: '院里', note: '' } });
+  const t2 = d.current.imgTasks.slice(-1)[0];
+  ok(t2 && !t2.kind, '★ 没写 kind 的 = 场景（' + JSON.stringify(t2.kind) + '）');
+  const v = G.buildView(d);
+  const v1 = (v.imgTasks || []).filter(x => x.id === t1.id)[0];
+  ok(v1 && v1.kind === 'portrait', '★ 视图里也带 kind（界面/日志能分辨）');
+  const sv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/task\.kind === 'portrait'/.test(sv), 'server.js sizeFor 认 kind=portrait');
+  const pr = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/sizePortrait/.test(pr) && /768/.test(pr), '人像档默认 768×768 在（§27）');
+  const pr2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'import.js'), 'utf8');
+  ok(/kind: 'portrait'/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')), '点立绘那条路真的会把 kind 塞进 img');
+  console.log('');
+  console.log('==== img-kind-check: ' + pass + ' passed, ' + fail + ' failed ====');
+  process.exitCode = fail ? 1 : 0;
+})();

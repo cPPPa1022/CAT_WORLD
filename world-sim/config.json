@@ -1,0 +1,30 @@
+{
+  "port": 3088,
+  "playerName": "阿游",
+  "roles": {},
+  "content": {
+    "nsfw": ""
+  },
+  "userSelf": {
+    "name": "老徐",
+    "identity": "退休法医",
+    "ability": "看尸体"
+  },
+  "image": {
+    "enabled": false,
+    "base": "",
+    "workflow": "",
+    "mode": "zit"
+  },
+  "llm": {
+    "baseURL": "",
+    "apiKey": "",
+    "model": "",
+    "timeoutMs": 900000,
+    "maxTokens": 32768,
+    "temperature": 1,
+    "topP": 0.95,
+    "presence": 0,
+    "frequency": 0
+  }
+}

@@ -1,0 +1,410 @@
+/* ══════════════════════════════════════════════════════════════════
+   tokens.css — UI/UX 重设计方案 · P0（设计令牌）+ P1（新布局）
+   依据：《UIUX重设计方案.md》第 8 章（视觉规范）+ 第 3 章（主界面布局）
+   规则：组件样式不写死颜色与字号；改配色只改本文件。
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 字体：界面用无衬线（中文可读性），只有世界/物件用等宽 ── */
+  --font-ui: "Noto Sans SC","Source Han Sans SC","PingFang SC","Microsoft YaHei","HarmonyOS Sans SC",system-ui,sans-serif;
+  --font-mono: 'Sarasa Mono SC','Cascadia Mono','Noto Sans Mono CJK SC',monospace;
+
+  /* ── 字号阶梯：7 级（原 13 种）── */
+  --fs-display: 30px; --lh-display: 40px;
+  --fs-title:   20px; --lh-title:   28px;
+  --fs-body:    17px; --lh-body:    31px;   /* 叙事正文 */
+  --fs-ui:      15px; --lh-ui:      23px;
+  --fs-meta:    14px; --lh-meta:    21px;
+  --fs-caption: 13px; --lh-caption: 19px;
+  --fs-ascii:   13px; --lh-ascii:   1.02;   /* 代码网格画：行高贴近字符高度，避免 18 行被裁（实测 1.06 时画高 351 > 可用 311） */
+
+  /* ── 间距节奏（8px 基准）── */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+
+  /* ── 色彩：中性为主，颜色只表达状态与焦点 ── */
+  --bg-app:#14151b;      /* 应用底 */
+  --bg-raise:#1c1e26;    /* 浮层底（Drawer / 物件） */
+  --bg-sunken:#0f1015;   /* 输入框等下沉面 */
+  --fg:#d6dae6;          /* 正文（对底 ~11:1）*/
+  --fg-2:#a8aec2;        /* 次要（对底 ~6:1，达 WCAG AA）*/
+  --fg-3:#7e849b;        /* 极次要·纯装饰，不承载信息 */
+  --line:#252833;        /* 分割线（仅在留白不够时使用）*/
+  --accent:#e8b45c;      /* 唯一强调色：只给可交互元素与"当前" */
+  --accent-dim:#a37f42;
+  --notice:#7dcfff;      /* 感知层（你注意到的世界细节）*/
+  --warn:#d9a15e;
+  --error:#f7768e;
+
+  /* ── 形状与阴影（内容卡片不鼓励存在）── */
+  --r-1:6px; --r-2:10px; --r-3:14px;
+  --shadow-1:0 8px 24px rgba(0,0,0,.35);
+  --shadow-2:0 24px 60px rgba(0,0,0,.5);
+
+  /* ── 动效（150–250ms，只用来表达"发生了什么变化"）── */
+  --t-fast:150ms; --t-base:200ms; --t-slow:250ms;
+  --ease:cubic-bezier(.2,.7,.3,1);
+
+  /* ── 命中区下限（设计稿：普通交互 ≥40，移动端 ≥44）── */
+  --hit:40px;
+}
+
+html, body { height:100%; }
+body {
+  margin:0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  color: var(--fg);
+  background:
+    radial-gradient(1100px 520px at 50% -12%, #1b2030 0%, transparent 62%),
+    var(--bg-app);
+}
+
+/* ══ P1 布局：一行世界上下文 / 一块世界 / 一块此刻 / 一条注意到 / 一条行动 ══ */
+#app {
+  display:flex; flex-direction:column;      /* 用 flex 而非 grid：旧 style.css 也在管 #layout，grid 跟踪会互相打架（实测 world/now 被挤成 167/183） */
+  height:100vh;
+  max-width:none;                    /* 旧版限宽 1320px，新版满宽 */
+  margin:0;
+  background:transparent;
+  box-shadow:none;
+}
+
+/* ① 世界上下文：左=世界（地点/时间/天气），右=工具/我 */
+header#worldbar {
+  display:flex; align-items:flex-start; gap:var(--sp-4);
+  padding:var(--sp-2) var(--sp-5) 6px;
+  background:linear-gradient(180deg, rgba(20,21,27,.92), rgba(20,21,27,.55));
+  border-bottom:1px solid var(--line);
+}
+header#worldbar > #topbar { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+.wb-ctx { display:flex; align-items:center; gap:var(--sp-3); min-height:28px; flex-wrap:wrap; }
+.wb-tools { display:flex; align-items:center; gap:var(--sp-3); margin-left:auto; }
+
+/* ② 世界：ASCII 场景直接落在背景上，不套卡片框 */
+#layout { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+#world {
+  flex:none;                                /* 世界占固定比例：不跟叙事抢空间，也不被内容压小 */
+  /* 高度由 app.js 按场景复杂度给（--world-h），这里只兜底 */
+  height:var(--world-h, 44vh);
+  display:flex; align-items:center; justify-content:center;
+  padding:var(--sp-2) var(--sp-5) 0;
+  overflow:hidden;                            /* 默认不滚：画放得下时不许出现滚动条 */
+}
+/* 画太大、到了字号下限还放不下 → 允许滚动（宁可滚，不许裁/叠/破框） */
+#world.art-scroll { overflow:auto; align-items:flex-start; justify-content:flex-start; }
+
+/* v2.05：窄屏抽屉按钮（#railtgl）已删除 —— 它唤出的右栏永远是 display:none，
+   于是窄屏上出现了一个"点了什么也不发生"的按钮（旧 bug 记录见交接文档）。 */
+
+/* v1.43：dev 状态条上的"输出被截断"提示（旧样式只有 .st-pill.cat.err，没有通用 .err） */
+.st-pill.err { color:var(--error); border-color:#5c2a24; }
+
+/* ── 面板弹层（#panel）：原来 right:26px / top:56px / z-index:50，
+   实测会**盖在顶栏的「工具/我」按钮上**（重叠），玩家看到"按钮被挡住/点不到"。
+   修法：让开顶栏高度（顶栏现在 ~109px 两行），并把层级压到顶栏之下（顶栏 50）。 */
+#panel { top:112px !important; right:20px !important; z-index:40 !important; }
+/* 删除上一版写死的 clamp 高度（否则与 --world-h 打架，实测后者不生效） */
+/* 场景画：字号由复杂度给（--ascii-fs），等宽字体等比缩放**不会**破坏 50 列对齐 */
+#world .ascii { max-height:100%; min-height:0; padding:0; border:0; background:transparent; box-shadow:none; font-size:var(--ascii-fs, var(--fs-ascii)); }
+#world .ascii .artrow { line-height:var(--lh-ascii); }
+#world .stage-img { max-height:100%; margin:0; }
+#world .stage-img img { max-height:38vh; }
+
+/* ③ 此刻：本回合叙事 —— 第一屏必须看得见一整回合 */
+#now {
+  flex:1 1 auto; overflow-y:auto; min-height:0;
+  padding:var(--sp-2) var(--sp-5) var(--sp-4);
+  -webkit-mask-image:linear-gradient(180deg, transparent 0, #000 18px);
+          mask-image:linear-gradient(180deg, transparent 0, #000 18px);
+}
+#now .beat { margin:var(--sp-2) 0; animation:none; }
+#now .beat.dialogue .line   { font-size:var(--fs-body); line-height:var(--lh-body); color:#eef1f7; }
+#now .beat.dialogue .who    { font-size:var(--fs-title); letter-spacing:.02em; color:var(--accent); font-weight:600; }
+#now .beat.dialogue .dlg-act{ font-size:var(--fs-caption); color:var(--fg-2); margin-top:2px; }
+#now .beat.narration        { font-size:var(--fs-body); line-height:var(--lh-body); color:var(--fg-2); }
+#now .beat.action           { font-size:var(--fs-body); line-height:var(--lh-body); color:var(--fg-2); }
+#now .beat.ambient          { font-size:var(--fs-meta); color:var(--fg-3); }
+#now .beat.user-action      { font-size:var(--fs-ui); color:var(--accent); border-left:2px solid var(--accent-dim); padding-left:var(--sp-3); margin:var(--sp-4) 0; background:transparent; }
+#now .beat.enter            { animation:fadeUp var(--t-slow) var(--ease); }
+#now .scene-card            { display:none; }   /* 场景标签已移进顶栏的世界上下文 */
+#now .story-fold .mini      { font-size:var(--fs-caption); color:var(--fg-2); padding:var(--sp-1) 0; min-height:28px; }
+
+/* v1.81：并排布局后叙事列只有 420px，而**行内图是 .beat.dialogue 的第三个 flex 子元素**：
+   [av 26px][dlg-main flex:1 min-width:0][img-inline 305px] 挤在 363px 里 ——
+   min-width:0 允许台词被压到 12px（≈一个字宽），实测台词变成竖排单字。
+   修法：给台词一个宽度下限（min(100%,15em)），放不下就让图 flex-wrap 换到下一行。 */
+#now .beat.dialogue          { flex-wrap:wrap; }
+#now .beat.dialogue .dlg-main{ min-width:min(100%, 15em); }
+#now .img-inline, #now .img-inline-img { max-width:100%; }
+
+/* ── 宽屏（≥1100px）：世界与此刻**并排**（v1.81）
+   为什么改：场景画实测是 ~1.36:1 的（52 列 × 0.586em 步进 / 15 行 × 1.5em 行距），
+   而竖排时世界区是 3.55:1 —— 画被高度卡死（字号只能到 16.7px，两侧各空 400px），
+   同时叙事区被压到 136px、只剩 4 行。
+   并排之后：画拿到整列高度 → 字号 ~22px、面积约 1.6 倍；叙事拿到 420px 的正常阅读列。
+   窄屏（<1100）回退成竖排，行为不变。 */
+@media (min-width:1100px) {
+  #layout { flex-direction:row; align-items:stretch; }
+  #world { flex:1 1 auto; height:auto; min-width:0; padding:var(--sp-3) var(--sp-4); }
+  #now   { flex:0 0 420px; width:420px; border-left:1px solid var(--line); }
+}
+
+/* ④ 你注意到：单行 · 与叙事同色 · 无胶囊边框（它是感知，不是按钮组） */
+/* 底栏：只占两行（感知 + 输入），总高控制在 ~130px。
+   实测发现：底栏吃 172px 时，场景画会被裁掉 2 行 —— "世界被 UI 挤掉"的物理原因就在这里。 */
+#dock { border-top:1px solid var(--line); padding:4px var(--sp-5) var(--sp-2); background:transparent; }
+#notice { display:flex; align-items:center; gap:var(--sp-4); flex-wrap:nowrap; overflow-x:auto; min-height:30px; }
+#notice .notice-h { flex:none; color:var(--fg-3); font-size:var(--fs-caption); letter-spacing:.08em; }
+#notice .notice-item {
+  all:unset; cursor:pointer; flex:none;
+  font-size:var(--fs-meta); color:var(--notice);
+  padding:var(--sp-1) 2px; min-height:26px;
+  border-bottom:1px solid transparent; transition:border-color var(--t-fast) var(--ease);
+}
+#notice .notice-item:hover, #notice .notice-item:focus-visible { border-bottom-color:var(--notice); }
+#notice .notice-empty { color:var(--fg-3); font-size:var(--fs-meta); }
+
+/* ⑤ 行动：两个轻量提示 + 输入 + 唯一主操作 */
+/* 轻提示与"你注意到"合到同一行：都是"入口级"信息，不该各占一行 */
+#quicktabs { display:flex; align-items:center; gap:var(--sp-3); margin:0; }
+#notice { margin-right:var(--sp-3); }
+#quicktabs .qt {
+  cursor:pointer; font-size:var(--fs-caption); color:var(--fg-3);
+  padding:2px 0; border:0; border-radius:0; transition:color var(--t-fast) var(--ease);
+}
+#quicktabs .qt:hover { color:var(--fg); }
+#quicktabs .qt.hint-on { color:var(--accent); }
+#quicktabs .qt-hint { display:inline; color:var(--fg-3); font-size:var(--fs-caption); opacity:.75; }
+
+#inputbar { display:flex; gap:var(--sp-3); align-items:flex-end; }
+#cmd {
+  flex:1; background:var(--bg-sunken); color:var(--fg);
+  font-family:var(--font-ui); font-size:var(--fs-ui); line-height:1.55;
+  border:1px solid var(--line); border-radius:var(--r-2);
+  padding:11px var(--sp-4); min-height:var(--hit); max-height:140px; resize:none; outline:none;
+  transition:border-color var(--t-fast) var(--ease);
+}
+#cmd::placeholder { color:var(--fg-3); }
+#cmd:focus { border-color:var(--accent-dim); box-shadow:0 0 0 3px rgba(232,180,92,.10); }
+#cmd:disabled { opacity:.5; }
+
+#send {
+  all:unset; cursor:pointer;
+  min-height:var(--hit); padding:10px var(--sp-6); border-radius:var(--r-2);
+  background:var(--accent); color:#1a1206; font-weight:600; font-size:var(--fs-ui);
+  transition:filter var(--t-fast) var(--ease);
+}
+#send:hover { filter:brightness(1.08); }
+#send:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+#send:disabled { filter:grayscale(.55); cursor:wait; }
+
+/* ── 顶栏内容：世界上下文（左）与入口（右）── */
+#worldbar #topbar .pill {
+  /* ★ 这些 pill 是 <button>：必须清掉浏览器默认外观（白底 + 灰边），
+     否则深色界面上会出现一块白斑，玩家看到的就是"按钮坏了/看不出是什么按钮"（实测踩到）。 */
+  background:transparent; border:1px solid var(--line); border-radius:999px;
+  font-family:inherit; font-size:var(--fs-meta); color:var(--fg-2);
+  cursor:pointer; appearance:none; -webkit-appearance:none; outline:none;
+  display:inline-flex; align-items:center; gap:6px;
+  padding:3px var(--sp-3);
+}
+#worldbar #topbar .pill:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+#worldbar #topbar .pill.plc { color:var(--fg); border-color:transparent; padding-left:0; font-weight:600; }
+#worldbar #topbar .pill.wx  { color:var(--fg-2); border-color:transparent; }
+#worldbar #topbar .pill.badge { color:var(--accent); border-color:var(--accent-dim); cursor:pointer; }
+#worldbar #topbar .toolbar-top { display:inline-flex; gap:var(--sp-1); }
+/* v1.81 顶栏分组分隔符：世界给的载体 │ 认知 │ 系统（见 renderTopbar 的三组注释）*/
+/* 实测 1px + opacity .65 在深底上几乎看不见，分组等于没分 —— 加高、提亮、留够两边间距 */
+#worldbar #topbar .tb-sep { flex:0 0 1px; width:1px; height:17px; align-self:center;
+  background:var(--line2); opacity:1; margin:0 7px; }
+#worldbar #topbar .tool {
+  all:unset; cursor:pointer; font-size:18px; padding:6px 9px; border-radius:var(--r-1);
+  /* 旧 style.css 里的 min-height:30px 会赢过这里，所以显式用 !important 兜住 40px 命中区 */
+  min-width:40px !important; min-height:40px !important;
+  display:inline-flex !important; align-items:center; justify-content:center;
+  color:var(--fg-2); opacity:1; transition:background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+#worldbar #topbar .tool:hover { background:rgba(255,255,255,.05); color:var(--fg); }
+#worldbar #topbar .tool:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+/* v1.82：图标从 emoji（字体）换成 SVG —— 字号管不到 svg，必须显式定尺寸 */
+#worldbar #topbar .tool svg { display:block; width:16px; height:16px; }
+#worldbar #topbar .pill.gear { gap:6px; }
+#worldbar #topbar .pill.gear svg { display:block; width:14px; height:14px; }
+#worldbar #topbar .pill.badge svg { display:block; width:14px; height:14px; }
+/* v1.82：顶栏上下文药丸（地点/时间/天气/未读）也走图标系统 */
+#worldbar #topbar .pill svg { display:block; width:14px; height:14px; flex:0 0 auto; opacity:.85; }
+#worldbar #topbar .pill { gap:6px; }
+.tile .t-i svg { display:block; width:20px; height:20px; }
+
+/* v2.05：旧右栏（#rail）已从 DOM 里删除 —— 内容搬进了「我」面板（P2-1.3 / §4.7）。 */
+
+/* ═══════════════════════════════════════════════════════════════
+   v1.46 · 演出效果器（fx.js 词表）+ 文书查看器（文档对象）
+   设计约束（对齐 UI 铁律）：
+     · 不开浅色底（深色界面上不出现白斑）
+     · 效果短暂、半透明、不盖住叙事文字（"装饰不许抢戏"）
+     · 文书是 diegetic 的一封摊开的信（暖纸色 + 印位），不是对话框
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --paper-1:#2a2520; --paper-2:#211d1a; --paper-line:#4a4033;
+  --paper-ink:#ddd2c0; --paper-dim:#a2957f; --seal:#b8433a;
+}
+
+/* 演出层挂在 #world 上（和天气效果同一个宿主思路：效果必须落在画上，不能飘在空白里） */
+#world { position:relative; }
+.fxlayer { position:absolute; inset:0; pointer-events:none; z-index:5; overflow:hidden; }
+
+/* ── v1.47 演出**原语**（引擎能力清单；组合与名字由 AI 定）
+   每个原语只做一件事，参数（dur/v/hue）由 JS 内联控制，这里只管"长什么样" ── */
+.atom { position:absolute; }
+/* 展开：一件东西从折叠到摊开 */
+.atom-unfold {
+  left:50%; top:50%; width:46%; height:56%;
+  transform:translate(-50%,-50%) scaleY(.06); opacity:0;
+  background:linear-gradient(180deg, rgba(232,180,92,.16), rgba(232,180,92,.04));
+  border:1px solid rgba(232,180,92,.45); border-radius:2px;
+  box-shadow:0 0 26px rgba(232,180,92,.18);
+  animation:fxUnfold 1.8s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes fxUnfold {
+  0%   { transform:translate(-50%,-50%) scaleY(.06); opacity:0; }
+  22%  { opacity:.95; }
+  70%  { transform:translate(-50%,-50%) scaleY(1); opacity:.85; }
+  100% { transform:translate(-50%,-50%) scaleY(1.03); opacity:0; }
+}
+/* 翻页：一侧扫过 */
+.atom-turn {
+  top:0; bottom:0; width:38%; right:-40%;
+  background:linear-gradient(90deg, transparent, rgba(198,202,216,.12), transparent);
+  animation:fxPage 1.2s ease-out forwards;
+}
+@keyframes fxPage { 0% { right:-40%; } 100% { right:105%; } }
+/* 印现：印记浮现 */
+.atom-seal { left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; opacity:0; animation:fxSeal 1.8s ease-out forwards; }
+.atom-seal-mark {
+  width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+  color:var(--seal); border:2px solid var(--seal); border-radius:3px;
+  font-size:24px; font-weight:700;
+}
+@keyframes fxSeal {
+  0%   { opacity:0; transform:rotate(-12deg) scale(1.5); }
+  25%  { opacity:.95; transform:rotate(-8deg) scale(1); }
+  75%  { opacity:.8; }
+  100% { opacity:0; transform:rotate(-8deg) scale(1); }
+}
+/* 闪光：一闪（不刺眼：上限 0.7 透明度，由 JS 控制） */
+.atom-flash { inset:0; background:#fff; opacity:.3; animation:fxFlash .4s ease-out forwards; }
+@keyframes fxFlash { 0% { opacity:0; } 18% { opacity:1; } 100% { opacity:0; } }
+/* 压暗：画面暗下去 */
+.atom-dim { inset:0; background:rgba(0,0,0,.25); opacity:0; animation:fxDim 1.6s ease-in-out forwards; }
+@keyframes fxDim { 0% { opacity:0; } 30% { opacity:1; } 100% { opacity:0; } }
+/* 涟漪：一圈一圈荡开 */
+.atom-ripple {
+  left:50%; top:50%; width:40px; height:40px; margin:-20px 0 0 -20px;
+  border:2px solid rgba(232,180,92,.5); border-radius:999px; opacity:0;
+  animation:fxRipple 1.4s ease-out forwards;
+}
+@keyframes fxRipple {
+  0%   { transform:scale(.2); opacity:.9; }
+  100% { transform:scale(14); opacity:0; }
+}
+/* 色脉：一层颜色脉动（hue 由 JS 给） */
+.atom-tint { inset:0; opacity:0; animation:fxTint 1.5s ease-in-out forwards; }
+@keyframes fxTint { 0% { opacity:0; } 35% { opacity:1; } 100% { opacity:0; } }
+/* ★ 通用兜底：引擎不认识的**世界自造**原语 —— 也要有表现，绝不静默失败 */
+.atom-unknown {
+  inset:0; opacity:0;
+  background:radial-gradient(circle at 50% 50%, rgba(232,180,92,.22), transparent 65%);
+  animation:fxUnknown 1.4s ease-in-out forwards;
+}
+@keyframes fxUnknown { 0% { opacity:0; } 30% { opacity:1; } 100% { opacity:0; } }
+/* devicePulse：顶栏的载体（信匣/大哥大/手机）震一下 */
+#topbar.fx-pulse { animation:fxPulse .5s ease-in-out 2; }
+@keyframes fxPulse {
+  0%,100% { transform:translateX(0); }
+  25% { transform:translateX(-3px); }
+  75% { transform:translateX(3px); }
+}
+
+/* ── 文书查看器：一封摊开的信 ── */
+.docmask {
+  position:fixed; inset:0; z-index:70;
+  background:rgba(6,7,10,.72);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+  animation:docFade .18s ease-out;
+}
+@keyframes docFade { from { opacity:0; } to { opacity:1; } }
+.docpaper {
+  width:min(620px, 92vw); max-height:76vh; overflow:auto;
+  background:linear-gradient(180deg, var(--paper-1), var(--paper-2));
+  border:1px solid var(--paper-line); border-radius:3px;
+  padding:22px 26px 30px; position:relative;
+  box-shadow:0 20px 60px rgba(0,0,0,.6), inset 0 0 0 1px rgba(232,180,92,.06);
+  color:var(--paper-ink);
+}
+/* 展开动画：折叠 → 摊平（与 letterOpen 的观感一致，同一件事的两半） */
+.docpaper.opening { animation:docUnfold .55s cubic-bezier(.2,.8,.25,1); transform-origin:top center; }
+@keyframes docUnfold {
+  0%   { transform:scaleY(.12) translateY(-8px); opacity:.2; }
+  60%  { transform:scaleY(1.02); opacity:1; }
+  100% { transform:scaleY(1); opacity:1; }
+}
+.dochead { display:flex; align-items:baseline; gap:12px; border-bottom:1px solid var(--paper-line); padding-bottom:10px; }
+.doctitle { flex:1; font-size:16px; font-weight:600; color:#f0e6d4; letter-spacing:.04em; }
+.docclose {
+  all:unset; cursor:pointer; font-family:inherit; font-size:12px;
+  color:var(--paper-dim); padding:4px 8px; border-radius:3px;
+}
+.docclose:hover { color:var(--paper-ink); background:rgba(255,255,255,.05); }
+.docmeta { margin-top:8px; font-size:12px; color:var(--paper-dim); letter-spacing:.02em; }
+.docbody { margin-top:14px; font-size:14px; line-height:2.0; letter-spacing:.02em; }
+.docbody p { margin:0 0 10px; text-indent:2em; }
+.docseal {
+  position:absolute; right:22px; bottom:16px;
+  width:38px; height:38px; display:flex; align-items:center; justify-content:center;
+  color:var(--seal); border:2px solid var(--seal); border-radius:3px;
+  font-size:17px; font-weight:700; opacity:.75; transform:rotate(-8deg);
+}
+/* 信匣 · 文书列表里的未读点（复用 .conv 行） */
+#panel .conv.hasunread .cname { color:var(--accent); }
+
+/* 场景热点：ASCII 网格里的交互点。
+   ── 用户反馈（2026-09-14）：「琥珀色字体有些会出现一些bug」
+   实测根因：旧规则 `.artrow .mark { color:#ffd98f; background:rgba(232,180,92,.16); box-shadow:…; font-weight:600 }`
+   把每个可点处刷成**琥珀色小方块 + 描边**（[货架▸]/[窗▸]/●沈 姨/[门▸]/[▸]），
+   于是字符画上浮着一堆贴纸 —— 既是"看着像坏图"，也把画的连续性打断了。
+   ── 现在：**热点在静止状态下必须和周围的画一模一样**（字色/字重继承），
+      只在 hover/focus 时给一个极轻的回应（亮一点点 + 一条细下划线），不像 UI 控件。 */
+#world .mark { position:relative; color:inherit !important; background:transparent !important; box-shadow:none !important; font-weight:inherit !important; border-radius:0 !important; }
+/* 命中区仍要 ≥40×40（视觉尺寸不变，靠伪元素扩大） */
+#world .mark::after {
+  content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:100%; height:40px; min-width:40px;
+}
+#world .mark:hover, #world .mark:focus-visible { color:#f2d9a3 !important; }
+#world .mark:hover::after, #world .mark:focus-visible::after { background:rgba(232,180,92,.07); border-radius:3px; }
+
+/* v1.33：刷新按钮不再常驻（F5 即可）；设置收敛成纯图标+"设置" */
+#worldbar #topbar .pill.gear[data-act="refresh"] { display:none !important; }
+
+/* 状态胶囊等：命中区也要 >=40（P3 顶栏重做时进一步降权） */
+#worldbar #topbar .pill.badge, #worldbar #topbar .pill.gear { min-height:40px !important; display:inline-flex; align-items:center; }
+
+/* 感知行与轻提示：给到 40px 的可点高度，但不做成按钮外观 */
+#notice .notice-item { min-height:36px !important; min-width:36px !important; display:inline-flex !important; align-items:center; justify-content:center; padding-left:var(--sp-2); padding-right:var(--sp-2); }
+#quicktabs .qt { min-height:36px !important; min-width:36px !important; display:inline-flex !important; align-items:center; justify-content:center; }
+
+@keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+/* ── 窄屏：先砍装饰，再收工具（设计稿 §7）── */
+@media (max-width:1024px) {
+  #world { height:clamp(130px, 26vh, 260px); }
+  header#worldbar { padding:var(--sp-2) var(--sp-4); }
+  #world, #now, #dock { padding-left:var(--sp-4); padding-right:var(--sp-4); }
+}
+@media (max-width:768px) {
+  :root { --fs-body:16px; --lh-body:28px; --fs-ascii:11px; }
+  #world { height:clamp(110px, 24vh, 220px); }
+  #send { padding:10px var(--sp-5); }
+}

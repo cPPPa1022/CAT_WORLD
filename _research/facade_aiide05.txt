@@ -1,0 +1,1196 @@
+Structuring Content in the 
+Façade
+ Interactive Drama Architecture 
+Michael Mateas
+1,3
+ and Andrew Stern
+2,3
+ 
+(co-authors listed alphabetically)
+ 
+ 
+1
+ College of Computing & Literature, Communication a
+nd Culture, Georgia Institute of Technology, michae
+lm@cc.gatech.edu 
+2
+ InteractiveStory.net; 
+3
+ grandtextauto.org, andrew@interactivestory.org 
+ 
+Abstract 
+The process of building 
+Façade
+, a first-person, real-time, 
+one-act interactive drama, has involved three major
+ research 
+efforts: designing ways to deconstruct a dramatic n
+arrative 
+into a hierarchy of story and behavior pieces; engi
+neering an 
+AI system that responds to and integrates the playe
+rs 
+moment-by-moment interactions to reconstruct a real
+-time 
+dramatic performance from those pieces; and underst
+anding 
+how to write an engaging, compelling story within t
+his new 
+organizational framework. This paper provides an o
+verview 
+of the process of bringing our interactive drama to
+ life as a 
+coherent, engaging, high agency experience, includi
+ng the 
+design and programming of thousands of joint dialog
+ 
+behaviors in the reactive planning language ABL, an
+d their 
+higher level organization into a collection of stor
+y beats 
+sequenced by a drama manager. The process of itera
+tively 
+developing the architecture, its languages, authori
+al idioms, 
+and varieties of story content structures are descr
+ibed. 
+These content structures are designed to intermix t
+o offer 
+players a high degree of responsiveness and narrati
+ve 
+agency. We conclude with design and implementation
+ 
+lessons learned and future directions for creating 
+more 
+generative architectures. 
+Approaching Interactive Story
+ 
+ 
+Stories have rich global, temporal structures whose
+ features 
+can vary both in form and pleasure for audiences. 
+Some 
+stories feature tightly-plotted causal chains of ev
+ents that 
+may, for example, offer audiences the intrigue of a
+ 
+intricate, unfolding mystery, or the spectacle of a
+n epic 
+historical conflict. By contrast, some stories hav
+e sparse, 
+even amorphous event structures, that can offer, fo
+r 
+example, the quieter pleasure of following the subt
+le 
+progression of emotion between two people. The his
+tories 
+of literature, theater, cinema and television demon
+strate 
+that many types of story structures can be pleasura
+ble for 
+audiences; the challenge for researchers and artist
+s is 
+determining how traditional story forms can be adap
+ted for 
+interactivity. Interactive experiences have several identifiable 
+features 
+of their own, such as immersion, agency, and transformation (Murray 1997), each offering particu
+lar 
+pleasures for interactors, and varying compatibilit
+y with 
+story. For many artists and researchers, 
+agency
+ is often 
+ 
+ 
+Copyright © 2005, American Association for Artifici
+al Intelligence 
+ (www.aaai.org). All rights reserved.
+ 
+ 
+considered the holy grail of interactive story plea
+sures, 
+perhaps because it offers players the most substant
+ial 
+influence on the overall structure of the experienc
+e. 
+Agency is also the most challenging to implement, e
+xactly 
+because it requires the system to dynamically assem
+ble a 
+story structure that incorporates the unpredictable
+ actions 
+of the player. This suggests that stories with 
+looser, 
+sparser
+ event structures (plots) will be easier to impleme
+nt 
+in an interactive medium (require less generativity
+), and 
+thus should be a good starting point for interactiv
+e story 
+researchers and artists. Note that such stories ca
+n be as 
+pleasurable as tightly-plotted ones, just in differ
+ent ways. 
+ When designing an interactive story architecture a
+nd its 
+content structures, the design choices made will in
+fluence 
+the types of stories that can be built within it, a
+nd greatly 
+affect the likelihood of ultimately creating pleasu
+rable 
+experiences for players. With this in mind, the 
+Façade
+ 
+architecture was designed with features intended fo
+r 
+building experiences with 
+high agency
+, and with enough 
+narrative intelligence (NI) (Mateas and Sengers 200
+2) to 
+construct character-rich, causally-sparse yet coher
+ent plots. 
+Further, we chose to implement several NI features particular to 
+theatrical drama
+, a powerful story form 
+historically shown to be compatible with sparse plo
+ts, 
+compensated for by rich 
+emotional expression
+ from its 
+characters. Additional features therefore importan
+t to 
+support include characters with a strong sense of immediacy
+ and 
+presence
+, whose very 
+aliveness
+ results in 
+the audience experiencing a sensation of danger or unpredictability, that anything is possible. This paper presents 
+Façade
+s solution to the tension 
+inherent between game and story, some organizing principles allowing us to move away from traditiona
+l 
+branching narrative structures, and an overview of Façade
+s architecture, combined with how its content is 
+structured and applied. We describe 
+Façade
+s atomic unit 
+of dramatic performance, the joint dialog behavior,
+ the 
+variety of its applications within the drama, their
+ 
+organization into story beats that afford sparse bu
+t coherent 
+plots, and their integration with sets of forward-c
+haining 
+natural language processing (NLP) rules offering pl
+ayers a 
+high degree of emotional expression. We conclude w
+ith 
+design and implementation lessons learned, and futu
+re 
+directions for creating more generative architectur
+es. All 
+of this discussion is guided by our primary design 
+goal: to 
+create an architecture for, and working example of,
+ high 
+agency, emotionally expressive interactive drama. 
+
+Resolving Game Versus Story Todays most pleasurable high agency interactive experiences are games, because the mechanics of gam
+e 
+agency are well understood and reasonably straightf
+orward 
+to implement. Player moves such as running, jumpin
+g or 
+shooting, playing a card, or moving a pawn directly
+ cause 
+scores, stats, levels or abstract game-piece config
+urations 
+to change. (Simulations of physical environments a
+nd 
+resource-bound systems have more complex state, but
+ can 
+still be represented numerically in understood ways
+.) 
+However, to date, a high agency interactive story h
+as yet to 
+be built. Existing game design and technology appro
+aches, 
+that focus on the feedback loop between player inte
+raction 
+and relatively simple numeric state, seem inappropr
+iate for 
+modeling the players effect on 
+story structure
+, whose 
+complex global constraints seem much richer than ca
+n be 
+captured by a set of numeric counters or game piece
+s. 
+ Our solution to this long-time conundrum is to rec
+ast 
+interactions within a story world in terms of abstr
+act 
+social 
+games
+. At a high level, these games are organized around
+ a 
+numeric score, such as the affinity between a cha
+racter 
+and the player. However, unlike traditional games i
+n which 
+there is a fairly direct connection between player interaction (e.g. pushing a button to fire a gun) a
+nd score 
+state (e.g. a decrease in the health of a monster),
+ in our 
+social games several levels of abstraction may sepa
+rate 
+atomic player interactions from changes in social 
+score. 
+Instead of jumping over obstacles or firing a gun, 
+in 
+Façade 
+players fire off a variety of 
+discourse acts
+, in 
+natural language, such as praise, criticism, flirta
+tion and 
+provocation. While these discourse acts will genera
+te 
+immediate reactions from the characters, it may tak
+e story-
+context-specific patterns of discourse acts to infl
+uence the 
+social game score. Further, the score is not direct
+ly 
+communicated to the player via numbers or sliders, 
+but 
+rather via enriched, theatrically dramatic performa
+nce. 
+ As a friend invited over for drinks at a make-or-b
+reak 
+moment in the collapsing marriage of the protagonis
+ts 
+Grace and Trip, the player unwittingly becomes an antagonist of sorts, forced by Grace and Trip into 
+playing 
+psychological head games with them (Berne 1964). 
+ 
+During the first part of the story, Grace and Trip 
+interpret 
+all of the players discourse acts in terms of a ze
+ro-sum 
+affinity game
+ that determines whose side Trip and Grace 
+currently believe the player to be on. Simultaneous
+ly, the 
+hot-button game
+ is occurring, in which the player can 
+trigger incendiary topics such as sex or divorce, progressing through tiers to gain more character an
+d 
+backstory information, and if pushed too far on a t
+opic, 
+affinity reversals. The second part of the story is
+ organized 
+around the 
+therapy game
+, where the player is (purposefully 
+or not) potentially increasing each characters deg
+ree of 
+self-realization about their own problems, represen
+ted 
+internally as a series of counters. Additionally, 
+the system 
+keeps track of the overall story 
+tension level
+, which is 
+affected by player moves in the various social game
+s. 
+Every change in each games state is performed by G
+race 
+and Trip in emotionally expressive, dramatic ways. 
+On the 
+whole, because their attitudes, levels of self-awar
+eness, and 
+overall tension are regularly progressing, the expe
+rience 
+takes on the form and aesthetic of a loosely-plotte
+d 
+domestic drama. Figure1. Grace and Trip in 
+Façade
+, viewed from the 
+player's first-person perspective. 
+Richness Through Coherent Intermixing Even with a design solution in hand for resolving t
+he 
+tension between game and story, an organizing princ
+iple is 
+required to break away from the constraints of trad
+itional 
+branching narrative structures, to avoid the combin
+atorial 
+explosion that occurs with complex causal event cha
+ins 
+(Crawford 1989). Our approach to this in 
+Façade
+ is 
+twofold: first, we divide the narrative into 
+multiple fronts of 
+progression
+, often causally independent, only occasionally 
+interdependent. Second, we build a variety of 
+narrative 
+sequencers
+ to sequence these multiple narrative 
+progressions. These sequencers operate in parallel 
+and can 
+coherently intermix their performances with one ano
+ther. 
+ 
+Façade
+'s architecture and content structure are two sides
+ 
+of the same coin, and will be described in tandem; 
+along 
+the way we will describe how the coherent intermixi
+ng is 
+achieved. 
+Architecture and Content Structure 
+The 
+Façade
+ architecture consists of characters written in 
+the reactive-planning language ABL, a drama manager
+ that 
+sequences dramatic beats, a forward-chaining rule s
+ystem 
+for understanding and interpreting natural language
+ and 
+gestural input from the player, and an animation en
+gine that 
+performs real-time non-photorealistic rendering, sp
+oken 
+dialog, music and sound, driven by and providing se
+nsing 
+data to the ABL behaviors (Mateas & Stern 2004a; Ma
+teas 
+& Stern 2004b; Mateas & Stern 2003a; Mateas & Stern
+ 
+2003b; Mateas & Stern 2000). The narrative sequencers for the social games are 
+written 
+in ABL, often taking advantage of ABLs support for
+ 
+reflection in the form of meta-behaviors that can m
+odify the 
+runtime state of other behaviors. The highest level
+ narrative 
+
+sequencer, the drama manager, sequences dramatic be
+ats 
+which are described in a custom drama management language. Beats, Beat Goals and Beat Mix-ins Façade
+s primary narrative sequencing occurs within a 
+beat
+, inspired by the smallest unit of dramatic action 
+in the 
+theory of dramatic writing (McKee 1997); however 
+Façade
+ 
+beats ended up being larger structures than the can
+onical 
+beats of dramatic writing. A 
+Façade
+ beat is comprised of 
+anywhere from 10 to 100 
+joint dialog behaviors
+ (jdbs), 
+written in ABL. Each beat is in turn a narrative s
+equencer, 
+responsible for sequencing a subset of its jdbs in
+ response 
+to player interaction. Only one beat is active at 
+any time. 
+A jdb, 
+Façade
+'s atomic unit of dramatic action (and closer 
+to the canonical beat of dramatic writing) consists
+ of a 
+tightly coordinated, dramatic exchange of 1 to 5 li
+nes of 
+dialog between Grace and Trip, typically lasting a 
+few 
+seconds. Jdbs consist of 40 to 200 lines of ABL co
+de. A 
+beats jdbs are organized around a common narrative
+ goal, 
+such as a brief conflict about a topic, like Grace
+s 
+obsession with redecorating, or the revelation of a
+n 
+important secret, like Trips attempt to force Grac
+e to enjoy 
+their second honeymoon in Italy. Each jdb is capab
+le of 
+changing one or more values of story state, such as
+ the 
+affinity games spectrum value, or any of the thera
+py 
+games self-revelation progression counters, or the
+ overall 
+story tension level. In the first part of the story
+, the within-
+beat narrative sequencer implements the affinity ga
+me; the 
+topic of the beat is organized as an instance of th
+e affinity 
+game. There are two typical uses of jdbs within beats: a
+s 
+beat 
+goals
+ and 
+beat mix-ins
+. A beat consists of a canonical 
+sequence of narrative goals called beat goals. The 
+typical 
+canonical sequence consists of a transition-in goal
+ that 
+provides a narrative transition into the beat (e.g.
+ bringing 
+up a new topic, perhaps connecting it to the previo
+us 
+topic), several body goals that accomplish the beat
+ (in 
+affinity game beats, the body goals establish topic
+-specific 
+conflicts between Grace and Trip that force the pla
+yer to 
+choose sides), a wait goal in which Grace and Trip 
+wait for 
+the player to respond to the head game established 
+by the 
+beat, and a default transition-out that transitions
+ out of the 
+beat in the event of no player interaction. In gene
+ral, 
+transition-out goals both reveal information and communicate how the players action within the beat
+ has 
+changed the affinity dynamic. The canonical beat goal sequence captures how the 
+beat 
+would play out in the absence of interaction. In ad
+dition to 
+the beat goals, there are a set of handler meta-beh
+aviors 
+that wait for specific NLP interpretations of playe
+r 
+discourse acts, and modify the canonical sequence i
+n 
+response, typically using beat mix-ins. That is, th
+e handler 
+logic implements the custom narrative sequencer for
+ the 
+beat. Beat mix-in jdbs are beat-specific reactions
+ used to 
+respond to player actions and connect the interacti
+on back 
+to the canonical sequence. Handlers are responsibl
+e both 
+for potentially adding, removing and re-ordering fu
+ture 
+beat goals, as well as interjecting beat mix-ins in
+to the 
+canonical sequence. By factoring the narrative sequ
+encing 
+logic and the beat goals in this way, we avoid havi
+ng to 
+manually unwind the sequencing logic into the beat 
+goal 
+jdbs themselves. For 
+Façade
+, an experience that lasts ~20 minutes and 
+requires several replays to see all of the content 
+available 
+(any one runthrough performs at most 25% of the tot
+al 
+content available), we authored ~2500 jdbs. Approxi
+mately 
+66% of those 2500 are in beat goals and beat mix-in
+s, 
+organized into 27 distinct beats, of which ~15 are encountered by the player in any one runthrough (se
+e the 
+drama management section further below). Global Mix-in Progressions Another type of narrative sequencer, that operates 
+in 
+parallel to and can intermix with beat goals and be
+at mix-
+ins, are 
+global mix-ins
+. (How coherent intermixing is 
+achieved is described in a later section.) Each ca
+tegory of 
+global mix-in has three tiers, progressively diggin
+g deeper 
+into a topic; advancement of tiers is caused by pla
+yer 
+interaction, such as referring to the topic. Each t
+ier in the 
+progression is constructed from one or more jdbs, j
+ust like 
+beat goals or beat mix-ins. They are focused on sa
+tellite 
+topics such as marriage, divorce, sex, therapy, or 
+about 
+objects such as the furniture, drinks, their weddin
+g photo, 
+the brass bull, or the view, or as generic reaction
+s to praise, 
+criticism, flirtations, oppositions and the like. Additionally, there are a variety of generic deflec
+tion and 
+recovery global mix-ins for responding to overly co
+nfusing 
+or inappropriate input from the player. In total t
+here are 
+~20 instances of this type of narrative sequencer i
+n 
+Façade
+, 
+comprising about 33% of the total ~2500 jdbs. Drama Management (Beat Sequencing) The coarsest narrative sequencing in 
+Façade
+ occurs in the 
+drama manager, or 
+beat sequencer
+. This lies dormant 
+ 
+PlayerArrives, TripGreetsPlayer, PlayerEntersTripGe
+tsGrace, 
+GraceGreetsPlayer, ArgueOverRedecorating, ExplainDa
+ting-
+Anniversary, ArgueOverItalyVacation, FixDrinksArgum
+ent, 
+PhoneCallFromParents, TransitionToTension2, GraceSt
+orms-
+ToKitchen, PlayerFollowsGraceToKitchen, GraceReturn
+s-
+FromKitchen, TripStormsToKitchen, PlayerFollowsTrip
+To-
+Kitchen, TripReturnsFromKitchen, TripReenactsPropos
+al, 
+BigBlowupCrisis, PostCrisis, TherapyGame, Revelatio
+ns-
+Buildup, Revelations, EndingNoRevelations, Ending-SelfRevelationsOnly, EndingRelationshipRevelationsO
+nly, 
+EndingBothNotFullySelfAware, EndingBothSelfAware 
+Table 1. The names of 
+Façade
+s 27 beats. 
+most of the time, only active when the current beat
+ is 
+finished or is aborted (by the beats own decision,
+ or by a 
+global mix-in). It is at the beat sequencing level
+ where 
+causal dependence between major events is handled 
+ that 
+is, where high-level plot decisions are made. 
+
+ In a beat sequencing language the author annotates
+ each 
+beat with selection knowledge consisting of precond
+itions, 
+weights, weight tests, priorities, priority tests, 
+and story 
+value effects  the overall tension level, in 
+Façade
+s case. 
+Given a collection of beats represented in the beat
+ 
+language, such as the 27 listed in Table 1, the bea
+t 
+sequencer selects the next beat to be performed. Th
+e 
+unused beat whose preconditions are satisfied and w
+hose 
+story tension effects most closely match the near-t
+erm 
+trajectory of an author-specified story tension arc
+ (in 
+Façade,
+ an Aristotelian tension arc) is the one chosen; 
+weights and priorities also influence the decision.
+ (Mateas 
+& Stern 2003a) Subsequent sections on Context Intermixing and Fai
+lures 
+and Successes further discuss beat sequencing. Long-term Autonomous Mix-in Behaviors Long-term autonomous behaviors, such as fixing drin
+ks 
+and sipping them over time, or carrying around and compulsively playing with an advice ball toy, last 
+longer 
+than a 60-second beat or a 10-second global mix-in.
+ While 
+perhaps performing only a minor narrative function,
+ 
+occasionally mixing in a jdb into the current beat (comprising only 1% of 
+Façade
+s jdbs), they contribute a 
+great deal to the appearance of intelligence in the
+ 
+characters, by having them perform extended, cohere
+nt 
+series of low-level actions in the background over 
+the 
+course of many minutes, across several beat boundar
+ies. By 
+simultaneously performing completely autonomous behaviors and joint behaviors, 
+Façade
+ characters are a 
+hybrid between the one-mind and many-mind extre
+mes 
+of approaches to agent coordination, becoming in ef
+fect 
+multi-mind agents (
+Mateas & Stern 2004a
+). 
+Strategies for Coherent Intermixing 
+Since global mix-ins for the hot-button game are se
+quenced 
+among beat goals/mix-ins for the affinity game, whi
+ch both 
+operate in parallel with the drama manager that is occasionally progressing overall story tension, se
+veral 
+strategies are needed to maintain coherency, both i
+n terms 
+of discourse management and narrative flow. First, global mix-in progressions are written to b
+e 
+causally independent of any beats narrative flow. 
+For 
+example, while quibbling about their second honeymo
+on in 
+Italy, or arguing about what type of drinks Trip sh
+ould 
+serve (affinity game beats, chosen by the drama man
+ager), 
+it is safe to mix in dialog about, for example, sex
+, or the 
+wedding photo (hot-button game mix-ins, triggered b
+y a 
+players reference to their topics). Each mix-ins
+ dialog is 
+written and voice-acted as if they are slightly tan
+gential 
+topics that are being jutted into the flow of conve
+rsation 
+(Oh, that photo, yeah, its really...). At the discourse level, mechanisms exist for smoot
+hly 
+handling such interruptions. During a beat goal, s
+uch as 
+Trips reminiscing about the food in Italy, if a gl
+obal mix-
+in is triggered, such as the player picking up (ref
+erring to) 
+the brass bull (a gift from Trips lover), the curr
+ent Italy 
+beat goal will immediately stop mid-performance, an
+d the 
+brass bull global mix-in will begin performing, at whichever tier that hot-button game has already pro
+gressed 
+to. At the time of interruption, if the Italy beat
+ goal had not 
+yet passed its 
+gist point
+, which is an author-determined 
+point in a beat goals jdbs, it will need to be re
+peated when 
+the global mix-in completes. Short, alternate uninterruptible dialog is authored for each beat go
+al for that 
+purpose. Also, each beat goal has a 
+reestablish
+ jdb that 
+gets performed if returning to the beat from a glob
+al mix-in 
+(So, I was going to say, about Italy...). Mix-in
+s 
+themselves can be interrupted by other mix-ins, bu
+t if so, 
+are not repeated as beat goals are. With only a few exceptions, the narratives of affi
+nity 
+game beats themselves are also designed to be causa
+lly 
+independent of one another, relating to the sparse
+ plot 
+characterization made earlier. For example, it doe
+s not 
+matter which order Grace and Trip argue about Italy
+, their 
+parents, redecorating, fixing drinks, or their dati
+ng 
+anniversary. When beat sequencing, this allows the
+ drama 
+manager to prefer sequencing any beats related to p
+ast 
+topics brought up by the player. Likewise, hot-but
+ton mix-
+ins can be safely triggered in any order, into almo
+st any 
+beat at any time. However, great authorial effort was taken to make 
+the 
+tone
+ of each beat goal/mix-in and global mix-in match e
+ach 
+other during performance. Most jdbs are authored w
+ith 3 
+to 5 alternates for expressing its narrative conten
+t at 
+different combinations of player affinity and tensi
+on level. 
+These include variations in word choice, voice-act
+ing, 
+emotion, gesture, and appropriate variation of info
+rmation 
+revealed. By having the tone of hot-button global 
+mix-ins 
+and affinity game beat goals/mix-ins always match e
+ach 
+other, players often perceive them as causally rela
+ted, even 
+though they are not. Additionally, for any one ton
+e, most 
+jdbs are authored with 2 to 4 dialog alternates, eq
+uivalent 
+in narrative functionality but helping create a sen
+se of 
+freshness and non-roboticness in the characters bet
+ween 
+runthroughs of the drama. 
+Evaluating Agency 
+The structure of narrative content in 
+Façade
+, described in 
+the previous sections, is intended to afford high a
+gency for 
+players, a primary pleasure of interactive experien
+ces. In 
+this section we identify two types of agency: local
+ and 
+global, and attempt to evaluate the degree of their
+ existence 
+in 
+Façade.
+ 
+Local Agency When the players actions cause immediate, context-specific, meaningful reactions from the system, we 
+call this 
+local agency
+. Furthermore, the greater the range of actions 
+the player can take, that is, the more expressive t
+he 
+interface, then the richer the local agency (again,
+ if the 
+responses are meaningful). 
+
+ 
+Façade
+ offers players a continuous, open-ended natural 
+language interface, as well as physical actions and
+ gestures 
+such as navigation, picking up objects, hugging and
+ 
+kissing. The millions of potential player inputs a
+re 
+mapped, using hundreds of authored 
+forward-chaining 
+NLU rules
+, into one or more of ~30 parameterized 
+discourse acts (DAs) such as praise, exclamation, 
+topic 
+references, and explanations. Another set of rules
+ called 
+context proposers
+ then interpret these DAs in context-
+specific ways, such as agreement, disagreement, all
+iance, 
+or provocation (
+Mateas and Stern 2004b
+). 
+ Ideally there would be immediate, meaningful, cont
+ext-
+specific responses available at all times for all D
+As. In the 
+actual implementation of 
+Façade
+, in our estimation this 
+ideal is reached ~25% of the time, where the player
+ has a 
+satisfying degree of real-time control over Grace a
+nd Trips 
+emotional state, affinity to the player, which topi
+c is being 
+debated, what information is being revealed, and th
+e 
+current tension level. But more often, ~40% of the
+ time, 
+only a partial ideal is reached: the mapping/interp
+retation 
+from DA to reaction is coarser, the responses are m
+ore 
+generic and/or not as immediate. Furthermore, ~25% 
+of the 
+time even shallower reactivity occurs, and ~10% of 
+the 
+time there is little or no reactivity. These varyi
+ng levels of 
+local agency are sometimes grouped together in temp
+oral 
+clusters, but also have the potential to shift on a
+ moment-
+by-moment basis. There are two main reasons for these varying level
+s of 
+local agency. First, from a design perspective, at
+ certain 
+points in the overall experience it becomes necessa
+ry to 
+funnel the potential directions of the narrative in
+ authorially 
+preferred directions, to ensure dramatic pacing and
+ 
+progress. Second, and more often the case, a lack 
+of local 
+agency is due to limitations in how much narrative 
+content 
+was authored (see the Failures section below). Global Agency The player has 
+global agency
+ when the global shape of the 
+experience is determined by player action. In 
+Façade
+ this 
+would mean that the final ending of the story, and 
+the 
+particulars of the narrative arc that lead to that 
+ending, are 
+determined in a smooth and continuous fashion by wh
+at the 
+player does, and that at the end of the experience 
+the player 
+can understand how her actions led to this storylin
+e. 
+ 
+Façade
+ attempts to achieve global agency in a few ways. 
+First, beat sequencing (i.e., high level plot) can 
+be 
+influenced by what topics the player refers to; the
+ 
+sequencing can vary within the number of allowed permutations of the beats preconditions and tensio
+n-arc-
+matching requirements. Even with only 27 beats in 
+the 
+system, technically there are thousands of differen
+t beat 
+sequences possible; however, since most beats are c
+ausally 
+independent, the number of 
+meaningfully different
+ beat 
+sequences are few. More significant than variations of beat sequences
+ 
+(what happened) are variations within beats and g
+lobal 
+mix-in progressions (how it happened). A variety 
+of 
+patterns and dynamics are possible within the affin
+ity, hot-
+button and therapy games over the course of the experience; in fact these patterns are monitored by
+ the 
+system and remarked upon in dramatic recapitulation
+s in 
+the BigBlowupCrisis beat halfway through the drama,
+ and 
+in the RevelationsBuildup beat at the climax of the
+ drama. 
+A calculus of the final scores of the various soc
+ial games 
+is used to determine which of five ending beats get
+s 
+sequenced, ranging from either Grace or Trip reveal
+ing one 
+or more big hidden secrets and then deciding to bre
+ak up 
+and leave, or both of them too afraid to do anythin
+g, or 
+both them realizing so much about themselves and ea
+ch 
+other that they decide to stay together.
+ 
+Failures and Successes 
+During the production of 
+Façade
+, within our limited 
+authoring effort (beyond the building of the archit
+ecture, 
+Façade
+ required ~3 person years of just authoring, which 
+is 
+more than a typical art/research project but far le
+ss than a 
+typical game industry project) we made the tradeoff
+ to 
+support a significant degree of local agency, which
+ in the 
+end came at the expense of global agency. Combined
+ with 
+the reality that the time required to design and au
+thor jdbs 
+is substantial, only 27 beats were created in the e
+nd, 
+resulting is far lower global agency than we initia
+lly hoped 
+for. As a result, we feel we did not take full adv
+antage of 
+the power of the drama managers capabilities. Furthermore, because the specification of each joi
+nt 
+dialog behavior  spoken dialog, staging directions
+, 
+emotion and gesture performance  requires a great 
+deal of 
+authoring and is not automatically generated by hig
+her-
+level behaviors or authoring tools, we are limited 
+to the 
+permutations of hand-authored, intermixable content
+. 
+Façade 
+is not generating sentences  although it is 
+generating sequences. A major challenge we encountered, that we believe Façade
+ falls short on, is always clearly communicating th
+e 
+state of the social games to the player. With trad
+itional 
+games, it is straightforward to tell players the ga
+me state: 
+display a numeric score, or show the character phys
+ically at 
+a higher platform, or display the current arrangeme
+nt of 
+game pieces. But when the game is ostensibly hap
+pening 
+inside of the characters heads, and if we intend t
+o maintain 
+a theatrical, performative aesthetic (and not displ
+ay internal 
+feelings via stats and slider bars, ala 
+The Sims
+), it becomes 
+a significant challenge. In our estimation 
+Façade 
+succeeds 
+better at communicating the state of the simpler af
+finity and 
+hot-button games than the more complex therapy game
+. 
+ Another major challenge was managing the players expectations, raised by the existence of an open-en
+ded 
+natural language interface. We anticipated natural
+ 
+language understanding failures, which in informal evaluations of 
+Façade
+ to date, occur ~30% of the time on 
+average. This tradeoff was intentional, since we w
+anted to 
+better understand the new pleasures that natural la
+nguage 
+can offer when it 
+succeeds
+, which in 
+Façade 
+we found 
+occurs ~70% of the time, either partially or fully.
+ 
+
+ In our estimation, a success of 
+Façade 
+is the integration 
+of the beat goal/mix-in, global mix-in and drama ma
+nager 
+narrative sequencers, with an expressive natural la
+nguage 
+interface, context-specific natural language proces
+sing, and 
+expressive real-time rendered character animation. 
+ We feel 
+the overall effect makes some progress towards our 
+original 
+design goals of creating a sense of the immediacy, presence, and aliveness in the characters required 
+for 
+theatrical drama. Certain aspects of our dramas design help make 
+Façade
+ 
+a pleasurable interactive experience, while others 
+hurt. It 
+helps to have 
+two
+ tightly-coordinated non-player characters 
+who can believably keep dramatic action happening, 
+in the 
+event that the player stops interacting or acts uncooperatively. In fact, the fast pace of Grace a
+nd Trips 
+dialog performance discourages lengthy natural lang
+uage 
+inputs from the player. By design, Grace and Trip 
+are 
+self-
+absorbed,
+ allowing them to occasionally believably ignore 
+unrecognized or unhandleable player actions. Creat
+ing a 
+loose, sparsely plotted story afforded greater loca
+l agency, 
+but provided fewer opportunities for global agency.
+ 
+However, the richness of content variation, and at 
+least 
+moderate degree of global agency achieved, does encourage replay. The huge domain of the drama, a marriage falling a
+part, 
+arguably hurt the success of the overall experience
+, in that 
+it overly raised players expectations of the chara
+cters 
+intelligence, psychological complexity, and languag
+e 
+competence. As expected, the system cannot understa
+nd, 
+nor has authored reactions for, many reasonable pla
+yer 
+utterances. The large domain often requires mappin
+g 
+millions of potential surface texts to just a few d
+iscourse 
+acts, which can feel muddy or overly coarse to the 
+player. 
+Also, continuous real-time interaction, versus disc
+rete 
+(turn-taking) and/or non-real-time interaction, add
+ed a 
+great deal of additional complexity and authoring b
+urden. 
+Future Directions 
+In order to relieve the high authoring burden encou
+ntered 
+in building 
+Façade, 
+particularly in writing the thousands of 
+joint dialog behaviors required for an interactive 
+drama 
+with significant player agency, an even more 
+generative 
+approach is required. One approach is to create a 
+higher-
+level authoring tool, which compiles a more abstrac
+t 
+specification of narrative behavior into a set of corresponding joint dialog ABL behaviors. Greater authoring productivity would allow for increased lo
+cal and 
+global agency, since higher numbers of performance behaviors could be created more quickly and efficie
+ntly. 
+ Such an authoring tool would substantially increas
+e the 
+possibility for artists with minimal programming sk
+ills to 
+help build high agency interactive dramas. Short o
+f that, 
+developers with significant aptitude and experience
+ in 
+programming, dramatic writing and game design will 
+be 
+required, of which there are currently few, and few
+ 
+educational curricula to create them (Mateas & Ster
+n 
+2005). 
+ Additional approaches include implementing more lo
+w-
+level support for managing and generating emotion-r
+ich, 
+dramatic conversation behaviors, such as integratin
+g the 
+Em emotion bookkeeping system (Reilly 1997), automa
+ted 
+non-verbal conversation gestures (Vilhjálmsson 2003
+), or 
+procedural body animation (Perlin 2004). 
+References 
+Berne, E. 1964. Games People Play. New York: Grove
+ Press. 
+Crawford, C. 1989. Indirection. 
+Journal of Computer Game 
+Design, Volume 3
+. http://www.erasmatazz.com/library/JCGD_ 
+Volume_3/JCGD_Volume_3_Index.html Mateas, M. and Sengers, P. (Eds.). 2002. 
+Narrative Intelligence
+. 
+Amsterdam: John Benjamins. Mateas, M. and Stern, A. 2005. Build It to Understa
+nd It: 
+Simultaneous Research, Artmaking and Product Protot
+yping in 
+the Interactive Drama 
+Façade
+. In 
+Proceedings of the Digital 
+Games Research Association's 2
+nd
+ International Conference
+, 
+Vancouver, B.C., Canada, June 2005 (to appear). Mateas, M. and Stern, A. 2004a. A Behavior Language
+: Joint 
+Action and Behavioral Idioms. In Predinger, H. and 
+Ishiuka, M. 
+(Eds), 
+Life-like Characters: Tools, Affective Functions an
+d 
+Applications
+, Springer 2004. 
+Mateas, M. and Stern, A. 2004b. Natural Language Understanding in Façade: Surface Text Processing. I
+n 
+Proceedings of Technologies for Interactive Digital
+ Storytelling 
+and Entertainment,
+ Darmstadt, Germany, June 2004. 
+Mateas, M. and Stern, A. 2003a. Integrating plot, c
+haracter and 
+natural language processing in the interactive dram
+a 
+Façade
+. In 
+1
+st
+ International Conference on Technologies for Inter
+active 
+Digital Storytelling and Entertainment (TIDSE 03)
+, Darmstadt, 
+Germany , March 24  26, 2003 . Mateas, M. and Stern, A. 2003b. Façade: an experime
+nt in 
+building a fully-realized interactive drama, 
+Game Developers 
+Conference
+ 
+(GDC 03),
+ San Jose, CA, USA, March 4  8, 2003. 
+Mateas, M. and Stern, A. 2000. Towards Integrating 
+Plot and 
+Character for Interactive Drama. In 
+Working notes of the Social 
+Intelligent Agents: The Human in the Loop Symposium
+. AAAI 
+Fall Symposium Series. Menlo Park, CA.: AAAI Press.
+ 
+McKee, R. 1997. 
+Story: Substance, Structure, Style, and the 
+Principles of Screenwriting
+. New York: HarperCollins. 
+Murray, J. 1997. 
+Hamlet on the Holodeck
+. New York: Free 
+Press. 1998, Cambridge, MA: MIT Press. Perlin, K. 2004. Emotive Actors. Media Research Lab
+oratory, 
+NYU. http://mrl.nyu.edu/~perlin/experiments/emotive
+-actors 
+Reilly, S. 1997. Believable Social and Emotional Ag
+ents. Ph.D. 
+thesis, Tech report CMU-CS-96-138, Carnegie Mellon University. Vilhjálmsson, H. 2003. Avatar Augmented Online Conv
+ersation. 
+Ph.D. thesis, MIT Media Lab. 
+

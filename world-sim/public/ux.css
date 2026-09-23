@@ -1,0 +1,111 @@
+/* ══════════════════════════════════════════════════════════════════
+   ux.css —「第一印象」版（2026-09-19）
+
+   这张样式表不是补丁，是一次**取向性覆盖**：所有取值都指向同一件事 ——
+   让第一次打开的人 30 秒内知道"这是什么、我现在该点哪儿"。
+
+   判断每一条的唯一尺子：
+     · 陌生人第一眼看懂了吗？
+     · 屏幕上有没有"只有开发者才需要"的东西？
+     · 眼睛知道先看哪儿吗？（层次 = 主次，不是装饰）
+   故意不引用《世界剧设计纲领》/ catworld-ui 的具体条款 —— 那些是作者偏好，
+   这里只对"第一印象"负责。
+
+   加载在 style.css / tokens.css / studio.css 之后，可直接覆盖。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── ① 顶栏：入口带文字 ──────────────────────────────────────────
+   原来第二行是 8 个无字图标：玩家不知道"第二个图标是舆图"，只能一个个点。
+   现在每个入口都有字；入口数从 11 收到 6（世界给的载体 + 人物 + 我 + 更多 + 设置）。 */
+#worldbar #topbar .tool.lbl {
+  width:auto !important; min-width:0 !important;
+  padding:0 var(--sp-3) !important; gap:7px;
+}
+#worldbar #topbar .tool.lbl > span {
+  font-size:var(--fs-ui); color:var(--fg-2); letter-spacing:.02em; white-space:nowrap;
+}
+#worldbar #topbar .tool.lbl:hover > span { color:var(--fg); }
+#worldbar #topbar .tool.lbl.on > span { color:var(--accent); }
+
+/* ── ② 场景：画框由字符自己画，界面不再套第二层卡片框 ──────────────
+   ASCII 画自带边框字符；外面再包一圈 1px 直角框，等于"框里套框"，
+   眼睛先看到的是框而不是画。（也让"一屏可见矩形边框"少一个。） */
+#world .ascii {
+  border:0 !important; background:transparent !important; box-shadow:none !important;
+  padding:0 !important;
+}
+#world { padding-top:var(--sp-2); }
+#world .ascii-wrap, #world .ascii-box { border:0 !important; background:transparent !important; }
+
+/* ── ③ 阅读栏：把"此刻"当成主角 ──────────────────────────────────
+   加宽到 460px（画那边字号会自己重算，不会因此被裁）；正文提亮一档，
+   台词/旁白/氛围三档层次靠颜色与字重，不靠第三种字号。 */
+@media (min-width:1100px) {
+  #now { flex:0 0 460px !important; width:460px !important; }
+}
+#now { padding:var(--sp-4) var(--sp-4) var(--sp-5); }
+#now .beat.dialogue .line { color:#f4f7fb; }
+#now .beat.narration, #now .beat.action { color:#b9bfd1; }
+#now .beat.ambient { color:var(--fg-3); }
+/* 上一幕默认展开（见 app.js）：折叠按钮降权成一个提示，而不是一块 UI */
+#now .story-fold > .mini {
+  color:var(--fg-3) !important; font-size:var(--fs-caption) !important;
+  min-height:0 !important; padding:2px 0 6px !important; background:none !important; border:0 !important;
+}
+#now .story-fold > .mini:hover { color:var(--fg-2) !important; }
+
+/* ── ④ 面板：盖画，不盖字 ────────────────────────────────────────
+   原来 #panel 是 right:20px / 412px —— 正好压在阅读栏上：一开面板，正在读的段落没了。
+   认知层浮在**世界的画**上（左），阅读栏永远留在原位。
+   文字游戏里，盖住画只是少看一眼，盖住段落是打断阅读。 */
+#panel {
+  left:20px !important; right:auto !important; top:104px !important;
+  width:min(560px, 42vw) !important; max-height:74vh !important; z-index:60 !important;
+  background:var(--bg-raise); border:1px solid var(--line); border-radius:var(--r-3);
+  box-shadow:var(--shadow-2);
+}
+/* 窄屏放不下两列 → 面板铺满，此时以面板为主 */
+@media (max-width:1100px) {
+  #panel { left:12px !important; right:12px !important; width:auto !important; top:88px !important; }
+}
+
+/* 「更多」下拉同理：原来贴在右上角，一开就盖住台词。移到左上，盖画。 */
+.tiles {
+  left:20px !important; right:auto !important;
+  background:var(--bg-raise) !important; border:1px solid var(--line) !important;
+  border-radius:var(--r-3) !important; box-shadow:var(--shadow-2) !important;
+}
+@media (max-width:1100px) { .tiles { left:10px !important; right:10px !important; width:auto !important; } }
+
+/* ── ⑤ 开始界面：一屏只有一个"开始" ──────────────────────────────
+   原来左 8 个按钮里有 4 个是文件操作，右栏 6 张卡的第一张是"未连接模型"，
+   还摆着"自检/诊断/测试" —— 陌生人看到的是"一个没配置好的工具"。
+   现在：标题 → 一句这是什么 → 一个主按钮 → 其余全部收进「更多」。 */
+#start-grid.solo { grid-template-columns:minmax(340px,540px) !important; justify-content:center; }
+#start .title h1 { letter-spacing:6px; }
+.menu-primary {
+  all:unset; box-sizing:border-box; display:block; width:100%; text-align:center; cursor:pointer;
+  padding:17px 20px; margin:2px 0 10px; border-radius:var(--r-2);
+  background:var(--accent); color:#1a1408; font-size:19px; font-weight:600; letter-spacing:3px;
+  transition:filter var(--t-fast) var(--ease);
+}
+.menu-primary:hover { filter:brightness(1.09); }
+.menu-primary:active { filter:brightness(.96); }
+.menu-primary:focus-visible { outline:2px solid var(--fg); outline-offset:3px; }
+.menu-sub { text-align:center; color:var(--fg-3); font-size:var(--fs-caption); margin:0 0 var(--sp-4); }
+.menu-toggle {
+  all:unset; box-sizing:border-box; display:block; width:100%; text-align:center; cursor:pointer;
+  color:var(--fg-3); font-size:var(--fs-caption); padding:9px; border-radius:var(--r-1);
+  border-top:1px solid var(--line);
+}
+.menu-toggle:hover { color:var(--fg-2); background:rgba(255,255,255,.035); }
+.menu-more { margin-top:var(--sp-4); }
+.menu-more .side-card { margin-bottom:var(--sp-3); }
+.menu-more .menu-group { margin-top:var(--sp-3); }
+#start .minor { color:var(--fg-3); }
+
+/* ── ⑥ 字号：把游离尺寸拉回令牌 ──────────────────────────────────
+   实测主界面同时存在 8 种字号（11 / 13 / 14 / 15 / 17 / 18 / 20 / 22.5）。
+   这里只收最跳的两个：11px（角标）与 11.5px（分组标题）。 */
+#jsok { font-size:var(--fs-caption) !important; color:var(--fg-3) !important; }
+.tiles-h { font-size:var(--fs-caption) !important; letter-spacing:.14em; }

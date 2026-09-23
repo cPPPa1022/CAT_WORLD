@@ -1,0 +1,20 @@
+'use strict';
+const G = require('../src/game');
+const W = require('../src/world');
+(async () => {
+  const cfg = { llm: { baseURL: '', apiKey: '', model: '' } };
+  const d = W.buildDemoWorld();
+  let r1 = await G.runTurn(d, '你好', cfg);
+  const a1 = r1.view.sceneArt;
+  let r2 = await G.runTurn(d, '你好', cfg);
+  const a2 = r2.view.sceneArt;
+  console.log('[1] 同场景同布局复用=', a1 === a2, '| 缓存条目=', Object.keys((d.current.artCache || {})).length);
+  const r3 = await G.runTurn(d, '买牛奶', cfg);
+  const a3 = r3.view.sceneArt;
+  console.log('[2] 买牛奶后布局变→重画=', a3 !== a2, '| 货架还有牛奶吗=', a3.indexOf('牛奶') >= 0);
+  let r4 = await G.runTurn(d, '去老街口', cfg);
+  let r5 = await G.runTurn(d, '去转角杂货铺', cfg);
+  const a5 = r5.view.sceneArt;
+  console.log('[3] 去别处再回来→重画(布局变)=', a5 !== a3, '| 沈姨在场=', (r5.view.cast || []).map(c => c.name).join(','));
+  console.log('[4] 画行数=', a5.split('\n').length, '| 画头=', a5.split('\n')[1].slice(0, 30));
+})();

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生图工作台 · 设计样张 v1</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   生图工作台 · 静态样张 v1
+   壳层令牌 = Linear（near-black 画布 / 炭灰面板 / hairline / 薰衣草强调）
+   图像规则 = Runway（零阴影 / 1px 边框 / 图占 ≥60% / 文字退到 caption）
+   ⚠ 世界域的琥珀 #e8b45c 在本文件里只出现在「世界里的样子」那一屏
+   ══════════════════════════════════════════════════════════════ */
+:root{
+  /* ── 壳层令牌 ── */
+  --sh-canvas:#010102; --sh-surface-1:#0f1011; --sh-surface-2:#141516; --sh-surface-3:#18191a;
+  --sh-hairline:#23252a; --sh-hairline-strong:#34343a;
+  --sh-ink:#f7f8f8; --sh-ink-muted:#d0d6e0; --sh-ink-subtle:#8a8f98; --sh-ink-tertiary:#62666d;
+  --sh-accent:#5e6ad2; --sh-accent-hover:#828fff; --sh-focus:#5e69d1;
+  --sh-success:#27a644;
+  --sh-danger:#e5484d;            /* ⚠ Linear 只给 success，error 色待定（见交付说明） */
+  --sh-font:Inter,"SF Pro Display",-apple-system,"Segoe UI","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --sh-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  /* ── 世界域令牌（只给第二屏用）── */
+  --wd-bg:#14151b; --wd-raise:#1c1e26; --wd-line:#252833;
+  --wd-fg:#d6dae6; --wd-fg2:#a8aec2; --wd-fg3:#7e849b;
+  --wd-accent:#e8b45c; --wd-warn:#d9a15e; --wd-error:#f7768e;
+  --wd-mono:"Sarasa Mono SC","Cascadia Mono","Noto Sans Mono CJK SC",monospace;
+  --r1:6px; --r2:8px; --r3:12px; --r4:16px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}   /* ⚠ 必须有：.fields{display:grid} 会压过 UA 的 [hidden]{display:none} */
+html,body{height:100%;margin:0}
+body{background:#060607;color:var(--sh-ink);font-family:var(--sh-font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:inherit}
+
+/* ══ 样张脚手架（不属于设计）══ */
+#scaffold{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;
+  background:repeating-linear-gradient(45deg,#131316,#131316 8px,#17171b 8px,#17171b 16px);
+  border-bottom:1px dashed #3a3a44;font-size:12px;color:#9a9aa6}
+#scaffold b{color:#c9c9d4;font-weight:600}
+#scaffold .sep{width:1px;height:16px;background:#3a3a44;margin:0 4px}
+.chip{padding:4px 10px;border:1px solid #3a3a44;border-radius:999px;color:#b6b6c2;font-size:12px}
+.chip[aria-pressed="true"]{background:#5e6ad2;border-color:#5e6ad2;color:#fff}
+
+/* 样张脚手架可隐藏：?chrome=0 */
+body.no-scaffold #scaffold{display:none}
+body.no-scaffold #studio{height:100vh}
+body.no-scaffold #world{min-height:100vh;padding-top:28px}
+
+/* ══ 第一屏：工作台 ══ */
+#studio{height:calc(100vh - 45px);display:flex;flex-direction:column;background:var(--sh-canvas)}
+
+/* 顶栏 */
+.wk-top{display:flex;align-items:center;gap:16px;height:56px;padding:0 20px;border-bottom:1px solid var(--sh-hairline);flex:0 0 auto}
+.wk-title{font-size:18px;font-weight:500;letter-spacing:-0.4px}
+.wk-status{display:flex;align-items:center;gap:14px;font-size:13px;color:var(--sh-ink-subtle);margin-left:4px}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;margin-right:6px;vertical-align:1px}
+.dot.on{background:var(--sh-success)} .dot.off{background:var(--sh-ink-tertiary)}
+.dot.busy{background:var(--sh-accent)} .dot.fail{background:var(--sh-danger)}
+.wk-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{padding:8px 14px;border-radius:var(--r2);font-size:14px;font-weight:500;line-height:1.2;transition:background 150ms cubic-bezier(.2,.7,.3,1)}
+.btn.primary{background:var(--sh-accent);color:#fff}
+.btn.primary:hover{background:var(--sh-accent-hover)}
+.btn.ghost{color:var(--sh-ink-muted);border:1px solid var(--sh-hairline)}
+.btn.ghost:hover{background:var(--sh-surface-2);border-color:var(--sh-hairline-strong)}
+.btn:focus-visible{outline:2px solid var(--sh-focus);outline-offset:1px}
+
+/* 主体 */
+.wk-body{flex:1;display:grid;grid-template-columns:1fr 320px;grid-template-rows:minmax(0,1fr);min-height:0}
+/* ⚠ 必须给网格行一个确定高度：默认 auto 行会按内容（图片固有高度）撑开，
+   画布就会压到抽屉下面去。min-height:0 让画布可以被压缩。*/
+
+/* 画布区 */
+.wk-canvas{position:relative;display:flex;flex-direction:column;padding:24px;min-width:0;min-height:0;gap:16px}
+.frame{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.ph{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;
+    border:1px solid var(--sh-hairline);border-radius:var(--r2)}
+.screen{display:flex;align-items:center;justify-content:center;gap:14px;color:var(--sh-ink-subtle)}
+.ph-1{background:radial-gradient(120% 90% at 28% 18%,rgba(255,206,150,.26),transparent 62%),radial-gradient(110% 80% at 78% 84%,rgba(110,150,210,.22),transparent 66%),linear-gradient(158deg,#1d1b17,#0c0d11 62%,#07080b)}
+.ph-2{background:radial-gradient(120% 90% at 70% 22%,rgba(150,190,230,.24),transparent 60%),radial-gradient(100% 90% at 25% 82%,rgba(90,110,160,.20),transparent 64%),linear-gradient(200deg,#171a20,#0b0c10 60%,#07080a)}
+.ph-3{background:radial-gradient(120% 90% at 40% 30%,rgba(210,180,150,.22),transparent 58%),radial-gradient(100% 80% at 80% 78%,rgba(140,100,90,.20),transparent 62%),linear-gradient(140deg,#1a1614,#0d0c0e 62%,#08080a)}
+.ph-4{background:radial-gradient(120% 90% at 62% 26%,rgba(170,200,190,.20),transparent 60%),radial-gradient(100% 80% at 22% 80%,rgba(80,120,120,.20),transparent 64%),linear-gradient(170deg,#151a19,#0a0d0d 62%,#070909)}
+
+/* 空态 */
+.empty{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;color:var(--sh-ink-subtle)}
+.empty .big{font-size:15px;color:var(--sh-ink-muted)}
+.empty .sub{font-size:13px;max-width:340px}
+.cap{display:flex;align-items:baseline;gap:12px;flex:0 0 auto}
+.kicker{font-size:12px;font-weight:500;letter-spacing:.06em;color:var(--sh-ink-tertiary)}
+.cap-title{font-size:15px;font-weight:500;letter-spacing:-0.2px}
+.cap-meta{font-size:13px;color:var(--sh-ink-subtle);margin-left:auto;font-family:var(--sh-mono)}
+.cap-acts{display:flex;gap:6px;margin-left:12px}
+.cap-note{font-size:11px;color:var(--sh-ink-tertiary)}
+.tbtn{padding:4px 10px;border-radius:var(--r1);font-size:13px;color:var(--sh-ink-muted);border:1px solid transparent}
+.tbtn:hover{background:var(--sh-surface-2);border-color:var(--sh-hairline)}
+
+/* 右栏 */
+.wk-rail{border-left:1px solid var(--sh-hairline);display:flex;flex-direction:column;min-height:0;background:var(--sh-canvas)}
+.rail-tabs{display:flex;gap:2px;padding:12px 12px 0;flex:0 0 auto}
+.rail-tab{padding:7px 10px;border-radius:var(--r1);font-size:13px;color:var(--sh-ink-subtle)}
+.rail-tab:hover{color:var(--sh-ink-muted);background:var(--sh-surface-1)}
+.rail-tab[aria-selected="true"]{background:var(--sh-surface-2);color:var(--sh-ink)}
+.rail-body{flex:1;overflow:auto;padding:12px}
+.rail-foot{flex:0 0 auto;padding:10px 14px;border-top:1px solid var(--sh-hairline);font-size:12px;color:var(--sh-ink-tertiary)}
+
+/* 任务行 */
+.task{display:flex;gap:10px;padding:10px;border-radius:var(--r2);cursor:pointer;border:1px solid transparent}
+.task:hover{background:var(--sh-surface-1)}
+.task[aria-current="true"]{background:var(--sh-surface-2);border-color:var(--sh-hairline)}
+.task .t-main{flex:1;min-width:0}
+.task .t-top{display:flex;align-items:center;gap:8px;font-size:13px}
+.task .t-sub{font-size:12px;color:var(--sh-ink-tertiary);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task .t-st{font-size:12px;color:var(--sh-ink-subtle);white-space:nowrap}
+.task .t-err{font-size:12px;color:var(--sh-danger);margin-top:3px}
+.thumb{width:44px;height:44px;border-radius:var(--r1);border:1px solid var(--sh-hairline);flex:0 0 auto}
+
+/* 图库网格 */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.gitem{position:relative;aspect-ratio:1;border-radius:var(--r2);border:1px solid var(--sh-hairline);overflow:hidden;cursor:pointer}
+.gitem:hover{border-color:var(--sh-hairline-strong)}
+.gitem[aria-current="true"]{outline:2px solid var(--sh-focus);outline-offset:-2px}
+.gitem .gl{position:absolute;left:6px;bottom:5px;font-size:11px;color:rgba(255,255,255,.62)}
+
+/* 人物行 */
+.person{display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r2)}
+.person:hover{background:var(--sh-surface-1)}
+.avatar{width:56px;height:56px;border-radius:var(--r2);border:1px solid var(--sh-hairline);flex:0 0 auto;overflow:hidden}
+.avatar.none{border-style:dashed;display:flex;align-items:center;justify-content:center;color:var(--sh-ink-tertiary);font-size:18px}
+.person .p-main{flex:1;min-width:0}
+.person .p-name{font-size:14px}
+.person .p-sub{font-size:12px;color:var(--sh-ink-tertiary);margin-top:2px}
+
+/* 档案 */
+.dim{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--sh-surface-2);font-size:13px}
+.dim:last-child{border-bottom:none}
+.dim .k{width:56px;color:var(--sh-ink-tertiary);flex:0 0 auto}
+.dim .v{color:var(--sh-ink-muted)}
+.bar{height:3px;border-radius:999px;background:var(--sh-surface-3);overflow:hidden;margin:10px 0 14px}
+.bar i{display:block;height:100%;background:var(--sh-accent)}
+
+/* 参数抽屉 */
+.drawer{flex:0 0 auto;border-top:1px solid var(--sh-hairline);background:var(--sh-surface-1)}
+.drawer-head{display:flex;align-items:center;gap:12px;height:44px;padding:0 16px;font-size:13px;color:var(--sh-ink-subtle)}
+.drawer-head .d-tabs{display:flex;gap:2px;margin-left:4px}
+.d-tab{padding:5px 10px;border-radius:var(--r1);font-size:13px;color:var(--sh-ink-subtle)}
+.d-tab[aria-selected="true"]{background:var(--sh-surface-3);color:var(--sh-ink)}
+.drawer-head .grow{flex:1}
+.drawer-body{padding:4px 16px 18px;display:none}
+.drawer[data-open="true"] .drawer-body{display:block}
+.drawer[data-open="true"] .caret{transform:rotate(180deg)}
+.caret{transition:transform 180ms cubic-bezier(.2,.7,.3,1);color:var(--sh-ink-tertiary)}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px 24px;max-width:1100px}
+.f{display:flex;flex-direction:column;gap:6px;min-width:0}
+.f label{font-size:13px;color:var(--sh-ink-muted)}
+.f input[type=text],.f select{background:var(--sh-surface-1);border:1px solid var(--sh-hairline);border-radius:var(--r2);padding:8px 12px;font-size:14px;color:var(--sh-ink);width:100%}
+.f input[type=text]:focus,.f select:focus{outline:none;border-color:var(--sh-focus);box-shadow:0 0 0 2px rgba(94,105,209,.35)}
+.f .h{font-size:12px;color:var(--sh-ink-tertiary);line-height:1.45}
+.f .pair{display:flex;align-items:center;gap:8px}
+.f .pair input{width:84px !important;text-align:center;font-family:var(--sh-mono)}
+.sw{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--sh-ink-muted);cursor:pointer}
+.sw i{width:32px;height:18px;border-radius:999px;background:var(--sh-surface-3);border:1px solid var(--sh-hairline-strong);position:relative;transition:background 150ms,border-color 150ms}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:999px;background:var(--sh-ink-subtle);transition:transform 150ms,background 150ms}
+.sw[aria-pressed="true"] i{background:var(--sh-accent);border-color:var(--sh-accent)}
+.sw[aria-pressed="true"] i::after{transform:translateX(14px);background:#fff}
+.mini{padding:6px 10px;border-radius:var(--r1);border:1px solid var(--sh-hairline);font-size:13px;color:var(--sh-ink-muted);align-self:flex-start}
+.mini:hover{background:var(--sh-surface-2)}
+.okl{font-size:12px;color:var(--sh-success)}
+.badl{font-size:12px;color:var(--sh-danger)}
+
+/* ══ 第二屏：世界里的样子（世界域皮肤）══ */
+#world{display:none;min-height:calc(100vh - 45px);background:var(--wd-bg);font-family:var(--wd-mono);padding:32px;color:var(--wd-fg)}
+.w-head{font-size:13px;color:var(--wd-fg3);margin:0 0 6px}
+.w-title{font-size:15px;color:var(--wd-fg2);margin:0 0 22px;font-family:var(--sh-font)}
+.w-card{background:var(--wd-raise);border-radius:8px;padding:18px 20px;margin-bottom:16px;max-width:900px}
+.w-card h4{margin:0 0 12px;font-size:12px;font-weight:400;color:var(--wd-fg3);letter-spacing:.04em}
+.strip{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;background:#191b23;border:1px solid var(--wd-line);font-size:13px;cursor:pointer}
+.strip:hover{border-color:var(--wd-accent)}
+.strip .s-ico{font-size:14px}
+.strip .s-txt{color:var(--wd-fg2)}
+.strip .s-go{margin-left:auto;color:var(--wd-accent)}
+.strip.warn{border-color:rgba(217,161,94,.4)}
+.strip.err{border-color:rgba(247,118,142,.35)}
+.strip.err .s-txt{color:var(--wd-error)}
+.world-note{max-width:900px;font-family:var(--sh-font);font-size:13px;color:var(--wd-fg3);line-height:1.7}
+.stage{max-width:900px;border:1px solid var(--wd-line);border-radius:8px;overflow:hidden;background:var(--wd-bg);margin-bottom:16px}
+.stage .strip{border:none;border-bottom:1px solid var(--wd-line);border-radius:0;background:#191b23}
+.scene{font-family:var(--wd-mono);font-size:12px;line-height:1.12;color:var(--wd-fg2);margin:0;padding:16px 20px 10px;white-space:pre;overflow:auto}
+.narr{font-family:var(--sh-font);font-size:14px;line-height:1.7;color:var(--wd-fg2);padding:0 20px 18px}
+.narr b{color:var(--wd-accent);font-weight:400}
+.world-note code{font-family:var(--wd-mono);color:var(--wd-accent)}
+</style>
+</head>
+<body>
+
+<!-- ══ 样张脚手架：只为了让你切换视图，不属于设计本身 ══ -->
+<div id="scaffold">
+  <b>设计样张 v1</b><span>生图工作台</span>
+  <span class="sep"></span>
+  <button class="chip" id="v-studio" aria-pressed="true">① 工作台</button>
+  <button class="chip" id="v-world" aria-pressed="false">② 世界里的样子</button>
+  <span class="sep"></span>
+  <span>演示状态：</span>
+  <button class="chip" id="s-connected" aria-pressed="true">已接 · 有图</button>
+  <button class="chip" id="s-empty" aria-pressed="false">空态</button>
+  <button class="chip" id="s-unwired" aria-pressed="false">未接 ComfyUI</button>
+</div>
+
+<!-- ══════════════════ 第一屏：工作台 ══════════════════ -->
+<div id="studio">
+  <div class="wk-top">
+    <span class="wk-title">生图</span>
+    <span class="wk-status" id="wk-status">
+      <span><i class="dot on"></i>ComfyUI 已接</span>
+      <span><i class="dot busy"></i>出图中 1</span>
+      <span><i class="dot off"></i>待出 2</span>
+      <span><i class="dot fail"></i>失败 1</span>
+    </span>
+    <span class="wk-actions">
+      <button class="btn ghost" id="drawer-toggle">参数</button>
+      <button class="btn ghost">返回世界</button>
+      <button class="btn primary" id="btn-gen-top">生成当前场景</button>
+    </span>
+  </div>
+
+  <div class="wk-body">
+    <div class="wk-canvas">
+      <div class="frame" id="frame">
+        <img class="ph" id="ph" alt="生成的画面（占位）">
+      </div>
+      <div class="cap" id="cap">
+        <span class="kicker">当前选中</span>
+        <span class="cap-title" id="cap-title">供销社门市 · 午后</span>
+        <span class="cap-meta" id="cap-meta">1280×720 · 2.4s</span>
+        <span class="cap-acts">
+          <button class="tbtn">重出</button>
+          <button class="tbtn">复制提示词</button>
+          <button class="tbtn">存到图库</button>
+        </span>
+        <span class="cap-note">（占位图 · 样张不含真实生成画面）</span>
+      </div>
+    </div>
+
+    <div class="wk-rail">
+      <div class="rail-tabs" role="tablist">
+        <button class="rail-tab" role="tab" aria-selected="true" data-rail="queue">队列</button>
+        <button class="rail-tab" role="tab" aria-selected="false" data-rail="gallery">图库</button>
+        <button class="rail-tab" role="tab" aria-selected="false" data-rail="people">人物</button>
+        <button class="rail-tab" role="tab" aria-selected="false" data-rail="profile">档案</button>
+      </div>
+      <div class="rail-body">
+        <!-- 队列 -->
+        <div data-panel="queue">
+          <div class="task" aria-current="true">
+            <div class="thumb ph-1"></div>
+            <div class="t-main">
+              <div class="t-top"><span><i class="dot on"></i>已完成</span><span class="t-st">2.4s</span></div>
+              <div class="t-sub">供销社门市 · 午后 · 场景</div>
+            </div>
+          </div>
+          <div class="task">
+            <div class="thumb ph-2"></div>
+            <div class="t-main">
+              <div class="t-top"><span><i class="dot busy"></i>出图中</span><span class="t-st">12s</span></div>
+              <div class="t-sub">林秀兰 · 立绘</div>
+            </div>
+          </div>
+          <div class="task">
+            <div class="thumb ph-3" style="opacity:.35"></div>
+            <div class="t-main">
+              <div class="t-top"><span><i class="dot off"></i>待出</span><span class="t-st">排队 2</span></div>
+              <div class="t-sub">巷口 · 傍晚 · 场景</div>
+            </div>
+          </div>
+          <div class="task">
+            <div class="thumb" style="border-style:dashed"></div>
+            <div class="t-main">
+              <div class="t-top"><span><i class="dot fail"></i>失败</span><span class="t-st">重试 1</span></div>
+              <div class="t-sub">粮站大仓 · 夜 · 场景</div>
+              <div class="t-err">连接被拒绝（127.0.0.1:8181 无响应）</div>
+              <div style="margin-top:8px"><button class="mini">重试</button></div>
+            </div>
+          </div>
+        </div>
+        <!-- 图库 -->
+        <div data-panel="gallery" hidden>
+          <div class="grid">
+            <div class="gitem ph-1" aria-current="true"><span class="gl">14:20</span></div>
+            <div class="gitem ph-2"><span class="gl">13:58</span></div>
+            <div class="gitem ph-3"><span class="gl">13:41</span></div>
+            <div class="gitem ph-4"><span class="gl">12:30</span></div>
+            <div class="gitem ph-1" style="filter:hue-rotate(35deg)"><span class="gl">11:12</span></div>
+            <div class="gitem ph-2" style="filter:hue-rotate(-30deg)"><span class="gl">10:05</span></div>
+            <div class="gitem ph-3" style="filter:hue-rotate(60deg)"><span class="gl">09:47</span></div>
+            <div class="gitem ph-4" style="filter:hue-rotate(-50deg)"><span class="gl">09:12</span></div>
+            <div class="gitem ph-1" style="filter:hue-rotate(120deg)"><span class="gl">昨天</span></div>
+          </div>
+        </div>
+        <!-- 人物 -->
+        <div data-panel="people" hidden>
+          <div class="person">
+            <div class="avatar ph-2"></div>
+            <div class="p-main"><div class="p-name">林秀兰</div><div class="p-sub">印象：供销社的售货员</div></div>
+            <button class="tbtn">重出</button>
+          </div>
+          <div class="person">
+            <div class="avatar none">🖼</div>
+            <div class="p-main"><div class="p-name">老周</div><div class="p-sub">印象：只见过一面</div></div>
+            <button class="tbtn">生成</button>
+          </div>
+          <div class="person">
+            <div class="avatar none">🖼</div>
+            <div class="p-main"><div class="p-name">陈小雨</div><div class="p-sub">印象：还没打过照面</div></div>
+            <button class="tbtn">生成</button>
+          </div>
+        </div>
+        <!-- 档案 -->
+        <div data-panel="profile" hidden>
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span style="font-size:14px">林秀兰 · 九维档案</span>
+            <span style="font-size:12px;color:var(--sh-ink-tertiary)">7 / 9 齐全</span>
+          </div>
+          <div class="bar"><i style="width:78%"></i></div>
+          <div class="dim"><span class="k">发型</span><span class="v">齐耳短发，别一枚蓝发卡</span></div>
+          <div class="dim"><span class="k">脸型</span><span class="v">圆脸，颧骨不高</span></div>
+          <div class="dim"><span class="k">眉眼</span><span class="v">细眉，眼尾略下垂</span></div>
+          <div class="dim"><span class="k">身形</span><span class="v">中等偏瘦</span></div>
+          <div class="dim"><span class="k">衣着</span><span class="v">蓝色工作罩衫，袖口挽起</span></div>
+          <div class="dim"><span class="k">声音</span><span class="v">偏亮，语速快</span></div>
+          <div class="dim"><span class="k">气质</span><span class="v">利落、爱笑</span></div>
+          <div class="dim"><span class="k" style="color:var(--sh-danger)">记忆点</span><span class="v" style="color:var(--sh-ink-tertiary)">缺（生图时会漂）</span></div>
+          <div class="dim"><span class="k" style="color:var(--sh-danger)">标志物</span><span class="v" style="color:var(--sh-ink-tertiary)">缺（生图时会漂）</span></div>
+        </div>
+      </div>
+      <div class="rail-foot">缺维度的人在生图时会漂 —— 补齐后可重出</div>
+    </div>
+  </div>
+
+  <!-- 参数抽屉 -->
+  <div class="drawer" id="drawer" data-open="false">
+    <div class="drawer-head">
+      <button class="tbtn" id="drawer-toggle2">参数 <span class="caret">▾</span></button>
+      <div class="d-tabs" role="tablist">
+        <button class="d-tab" role="tab" aria-selected="true" data-drawer="conn">接入</button>
+        <button class="d-tab" role="tab" aria-selected="false" data-drawer="art">美术</button>
+        <button class="d-tab" role="tab" aria-selected="false" data-drawer="out">出图</button>
+      </div>
+      <span class="grow"></span>
+      <span style="font-size:12px;color:var(--sh-ink-tertiary)">改动即时生效，没有「保存」按钮</span>
+    </div>
+    <div class="drawer-body">
+      <!-- 接入 -->
+      <div class="fields" data-dpanel="conn">
+        <div class="f">
+          <label>启用生图</label>
+          <button class="sw" aria-pressed="true"><i></i>开着（不启用时零影响，世界照常玩）</button>
+        </div>
+        <div class="f">
+          <label>ComfyUI 地址</label>
+          <input type="text" id="f-base" value="http://127.0.0.1:8181" placeholder="http://127.0.0.1:8181">
+          <span class="h">本地服务；连不上时队列会停在「待出」，不会丢任务</span>
+        </div>
+        <div class="f">
+          <label>工作流</label>
+          <div class="pair"><button class="mini">📄 重新导入 JSON</button><span class="okl" id="f-wf">✔ 柯达金_2x.json</span></div>
+          <span class="h">导入即生效（和这里其他项一样）</span>
+        </div>
+        <div class="f">
+          <label>连接</label>
+          <div class="pair"><button class="mini">🔌 测试连接</button><span class="okl" id="f-conn">✔ ComfyUI 0.3.44</span></div>
+        </div>
+      </div>
+      <!-- 美术 -->
+      <div class="fields" data-dpanel="art" hidden>
+        <div class="f">
+          <label>美术模式</label>
+          <select><option>zit · 中文自然语言</option><option>anime · 英文描述</option><option>anime_tag · 英文标签</option></select>
+        </div>
+        <div class="f">
+          <label>画风预设</label>
+          <select><option>🎞 柯达金胶片</option><option>🖌 水墨写意</option><option>🎨 水彩</option><option>🌸 日系柔和</option></select>
+        </div>
+        <div class="f">
+          <label>AI 润色</label>
+          <button class="sw" aria-pressed="false"><i></i>关（规则装配直出，零模型）</button>
+        </div>
+        <div class="f">
+          <label>负面提示词</label>
+          <input type="text" placeholder="lowres, bad anatomy, blur…">
+        </div>
+        <div class="f">
+          <label>前置提示词</label>
+          <input type="text" placeholder="固定构图 / 镜头偏好，逗号分隔">
+          <span class="h">所有模式都会拼在最前面</span>
+        </div>
+        <div class="f">
+          <label>Anime 前缀 / 艺术家</label>
+          <div class="pair"><input type="text" placeholder="masterpiece" style="width:auto;flex:1"><input type="text" placeholder="@artist" style="width:auto;flex:1"></div>
+        </div>
+      </div>
+      <!-- 出图 -->
+      <div class="fields" data-dpanel="out" hidden>
+        <div class="f">
+          <label>配图偏好</label>
+          <select><option>⚡ 自动 —— 每回合至少 1 张</option><option>🌤 随缘 —— AI 写了画面笔记才出</option><option>🖐 手点 —— 只在状态条上点才出</option></select>
+        </div>
+        <div class="f">
+          <label>人像 · 立绘尺寸</label>
+          <div class="pair"><input type="text" value="768"><span style="color:var(--sh-ink-tertiary)">×</span><input type="text" value="768"></div>
+        </div>
+        <div class="f">
+          <label>场景插画尺寸</label>
+          <div class="pair"><input type="text" value="1280"><span style="color:var(--sh-ink-tertiary)">×</span><input type="text" value="720"></div>
+          <span class="h">你设多少，出来的就是多少（工作流带 2x 放大时引擎会反推潜空间）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 第二屏：世界里的样子 ══════════════════ -->
+<div id="world">
+  <div class="w-head">// 世界域 · 沿用 world-sim 皮肤（琥珀 + 等宽）—— 这一屏只展示常驻状态条的三种状态</div>
+  <div class="w-title">常驻状态条：世界里唯一和生图有关的东西。点它 → 打开工作台。</div>
+
+  <div class="w-card" style="padding:18px 20px 20px">
+    <h4>实际位置 · 舞台顶部一条 sticky 条（不是嵌在面板里）</h4>
+    <div class="stage">
+      <div class="strip"><span class="s-ico">🎨</span><span class="s-txt">正在出「林秀兰 · 立绘」…</span><span class="s-go">生图 ›</span></div>
+      <pre class="scene">   ┌──────────────────────────────────────┐
+   │  ░░░░░░░  供销社门市  ░░░░░░░        │
+   │ ░░┌────┐░░░░░░░░┌────┐░░░░░░░░░░░░░ │
+   │ ░░│柜台│░░░░░░░░│货架│░░░░░░░░░░░░░ │
+   │ ░░└────┘░░░░░░░░└────┘░░░░░░░░░░░░░ │
+   └──────────────────────────────────────┘</pre>
+      <div class="narr">门帘被人从里面挑开，<b>林秀兰</b>探出头来，手里还捏着半截没打完的算盘。</div>
+    </div>
+  </div>
+
+  <div class="w-card">
+    <h4>状态 A · 待出（默认）</h4>
+    <div class="strip"><span class="s-ico">🎨</span><span class="s-txt">2 张待出</span><span class="s-go">生图 ›</span></div>
+  </div>
+  <div class="w-card">
+    <h4>状态 B · 出图中</h4>
+    <div class="strip"><span class="s-ico">🎨</span><span class="s-txt">正在出「林秀兰 · 立绘」…</span><span class="s-go">生图 ›</span></div>
+  </div>
+  <div class="w-card">
+    <h4>状态 C · 失败（唯一会被强调的状态）</h4>
+    <div class="strip err"><span class="s-ico">⚠</span><span class="s-txt">1 张没出来：连接被拒绝</span><span class="s-go">生图 ›</span></div>
+  </div>
+  <div class="w-card">
+    <h4>状态 D · 未启用（整条消失，不占位）</h4>
+    <div class="world-note">不启用生图时，这条<b>完全不出现</b> —— 世界界面回到「只有世界」的样子，零占位、零灰条。</div>
+  </div>
+
+  <div class="world-note">
+    对照点：<code>上面的工作台走 Linear 的暗色工具语言（薰衣草 #5e6ad2），下面这条走世界域皮肤（琥珀 #e8b45c + 等宽字）</code>。
+    同一个功能、两种衣服 —— 一眼能看出「我在世界里」还是「我在操作软件」。
+  </div>
+</div>
+
+<script>
+(function(){
+  var $ = function(s){ return document.querySelector(s); };
+  var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+  // ── 画布占位图：真 <img>（1280×720 的 SVG），走 object-fit:contain。
+  //    和真实实现同构（真实是 <img src="/api/gallery/img?id=...">），所以宽高比由浏览器保证，不会被拉扁。
+  var PH = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">' +
+    '<defs>' +
+    '<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a251d"/>' +
+    '<stop offset=".55" stop-color="#101116"/><stop offset="1" stop-color="#08090c"/></linearGradient>' +
+    '<radialGradient id="a" cx="30%" cy="18%" r="72%"><stop offset="0" stop-color="#ffd9a0" stop-opacity=".30"/>' +
+    '<stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="b" cx="78%" cy="86%" r="66%"><stop offset="0" stop-color="#7fa3d6" stop-opacity=".22"/>' +
+    '<stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>' +
+    '</defs><rect width="1280" height="720" fill="url(#g)"/>' +
+    '<rect width="1280" height="720" fill="url(#a)"/><rect width="1280" height="720" fill="url(#b)"/></svg>');
+  function frameHTML(op){
+    return '<img class="ph" id="ph" src="' + PH + '" alt="生成的画面（占位）"' + (op ? ' style="opacity:' + op + '"' : '') + '>';
+  }
+  if ($('#ph')) $('#ph').src = PH;
+
+  // ── 视图切换 ──
+  function view(which){
+    $('#studio').style.display = which === 'studio' ? 'flex' : 'none';
+    $('#world').style.display  = which === 'world'  ? 'block' : 'none';
+    $('#v-studio').setAttribute('aria-pressed', String(which === 'studio'));
+    $('#v-world').setAttribute('aria-pressed', String(which === 'world'));
+  }
+  $('#v-studio').onclick = function(){ view('studio'); };
+  $('#v-world').onclick  = function(){ view('world'); };
+
+  // ── 演示状态 ──
+  // 接入那一格要跟着状态走，否则"未接"的说辞和绿色的 ✔ 自相矛盾
+  function setConn(kind){
+    var wf = $('#f-wf'), cn = $('#f-conn'), bs = $('#f-base');
+    if (kind === 'unwired'){
+      wf.className = 'badl'; wf.textContent = '（未导入工作流）';
+      cn.className = 'badl'; cn.textContent = '✘ 连接被拒绝（ECONNREFUSED）';
+      bs.value = '';
+    } else {
+      wf.className = 'okl'; wf.textContent = '✔ 柯达金_2x.json';
+      cn.className = 'okl'; cn.textContent = '✔ ComfyUI 0.3.44';
+      bs.value = 'http://127.0.0.1:8181';
+    }
+  }
+  var Q0 = document.querySelector('[data-panel="queue"]').innerHTML;
+  function state(kind){
+    ['s-connected','s-empty','s-unwired'].forEach(function(id){
+      $('#'+id).setAttribute('aria-pressed', String(id === 's-'+kind));
+    });
+    var frame = $('#frame'), cap = $('#cap'), st = $('#wk-status'), q = document.querySelector('[data-panel="queue"]');
+    if (kind === 'empty'){
+      frame.innerHTML = '<div class="empty"><div class="big">这个世界还没有画面</div>' +
+        '<div class="sub">打一回合，或者手动生成当前场景。生成 1280×720 大约要 20~60 秒。</div>' +
+        '<button class="btn primary">生成当前场景</button></div>';
+      cap.style.visibility = 'hidden';
+      st.innerHTML = '<span><i class="dot on"></i>ComfyUI 已接</span><span><i class="dot off"></i>队列空</span>';
+      q.innerHTML = '<div class="screen" style="padding:40px 12px;justify-content:center">队列是空的</div>';
+      $('#btn-gen-top').hidden = true;          // 一屏只留一个 Primary（空态的那个才是主角）
+    } else if (kind === 'unwired'){
+      frame.innerHTML = frameHTML(.18);
+      cap.style.visibility = 'visible';
+      $('#btn-gen-top').hidden = false;
+      st.innerHTML = '<span><i class="dot off"></i>ComfyUI 未接</span><span style="color:var(--sh-ink-tertiary)">缺地址或工作流</span>';
+      openDrawer(true); pickDrawer('conn');
+      q.innerHTML = Q0;
+      setConn('unwired');
+    } else {
+      frame.innerHTML = frameHTML();
+      cap.style.visibility = 'visible';
+      $('#btn-gen-top').hidden = false;
+      st.innerHTML = '<span><i class="dot on"></i>ComfyUI 已接</span><span><i class="dot busy"></i>出图中 1</span>' +
+        '<span><i class="dot off"></i>待出 2</span><span><i class="dot fail"></i>失败 1</span>';
+      q.innerHTML = Q0;
+      setConn('connected');
+    }
+  }
+  $('#s-connected').onclick = function(){ state('connected'); };
+  $('#s-empty').onclick     = function(){ state('empty'); };
+  $('#s-unwired').onclick   = function(){ state('unwired'); };
+
+  // ── 右栏 tab ──
+  $$('.rail-tab').forEach(function(t){
+    t.onclick = function(){
+      $$('.rail-tab').forEach(function(x){ x.setAttribute('aria-selected','false'); });
+      t.setAttribute('aria-selected','true');
+      var k = t.getAttribute('data-rail');
+      $$('[data-panel]').forEach(function(p){ p.hidden = p.getAttribute('data-panel') !== k; });
+    };
+  });
+
+  // ── 抽屉 ──
+  function openDrawer(on){ $('#drawer').setAttribute('data-open', String(on)); }
+  function pickDrawer(k){
+    $$('.d-tab').forEach(function(x){ x.setAttribute('aria-selected', String(x.getAttribute('data-drawer') === k)); });
+    $$('[data-dpanel]').forEach(function(p){ p.hidden = p.getAttribute('data-dpanel') !== k; });
+  }
+  $$('.d-tab').forEach(function(t){ t.onclick = function(e){ e.stopPropagation(); pickDrawer(t.getAttribute('data-drawer')); openDrawer(true); }; });
+  function toggleDrawer(){ openDrawer($('#drawer').getAttribute('data-open') !== 'true'); }
+  $('#drawer-toggle').onclick = toggleDrawer;
+  $('#drawer-toggle2').onclick = toggleDrawer;
+
+  // ── 点图库缩略图 → 上画布 ──
+  $$('.gitem').forEach(function(g, i){
+    g.onclick = function(){
+      $$('.gitem').forEach(function(x){ x.removeAttribute('aria-current'); });
+      g.setAttribute('aria-current','true');
+      var ph = $('#ph');
+      if (ph) ph.style.filter = 'hue-rotate(' + (i * 41 - 60) + 'deg) contrast(1.04)';
+      $('#cap-title').textContent = g.querySelector('.gl').textContent + ' 的画面';
+    };
+  });
+
+  // ── 开关 ──
+  $$('.sw').forEach(function(s){
+    s.onclick = function(){ s.setAttribute('aria-pressed', String(s.getAttribute('aria-pressed') !== 'true')); };
+  });
+
+  // ── 深链：?view=studio|world & state=connected|empty|unwired & rail=queue|gallery|people|profile
+  //          & dt=conn|art|out & drawer=1 & chrome=0 ──
+  function activeState(){
+    var ids = ['connected','empty','unwired'];
+    for (var i=0;i<ids.length;i++){ if ($('#s-'+ids[i]).getAttribute('aria-pressed') === 'true') return ids[i]; }
+    return 'connected';
+  }
+  function syncUrl(){
+    var p = new URLSearchParams();
+    p.set('view', $('#world').style.display === 'block' ? 'world' : 'studio');
+    p.set('state', activeState());
+    if ($('#drawer').getAttribute('data-open') === 'true') p.set('drawer','1');
+    var rt = document.querySelector('.rail-tab[aria-selected="true"]'); if (rt) p.set('rail', rt.getAttribute('data-rail'));
+    var dt = document.querySelector('.d-tab[aria-selected="true"]');  if (dt) p.set('dt',   dt.getAttribute('data-drawer'));
+    if (document.body.classList.contains('no-scaffold')) p.set('chrome','0');
+    history.replaceState(null, '', location.pathname + '?' + p.toString());
+  }
+  document.addEventListener('click', function(){ setTimeout(syncUrl, 0); });
+
+  (function applyUrl(){
+    var q = new URLSearchParams(location.search);
+    if (q.get('chrome') === '0') document.body.classList.add('no-scaffold');
+    if (q.get('state')) state(q.get('state'));
+    if (q.get('rail'))  $('[data-rail="'  + q.get('rail') + '"]').click();
+    if (q.get('dt'))    $('[data-drawer="' + q.get('dt')  + '"]').click();
+    if (q.get('drawer') === '1') openDrawer(true);
+    if (q.get('view') === 'world') view('world');
+    syncUrl();
+  })();
+})();
+</script>
+</body>
+</html>

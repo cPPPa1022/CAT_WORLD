@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小猫的世界 · world-sim</title>
+<link rel="stylesheet" href="/style.css?v=33">
+</head>
+<body>
+<div id="app" class="hidden">
+  <header id="topbar"></header>
+  <main id="layout">
+    <section id="stage"></section>
+    <aside id="rail"></aside>
+  </main>
+  <footer id="dock">
+    <div id="statline" class="hidden"></div>
+    <div id="chips"></div>
+    <div id="quicktabs"><span class="qt" data-k="act">🎬 行动</span><span class="qt" data-k="say">💬 说话</span><span class="qt" data-k="ask">❓ 提问</span><span class="qt-hint">点一下帮你开头，再自己填</span></div>
+    <div id="inputbar">
+      <textarea id="cmd" rows="1" placeholder="例：我走进店里，看看货架…（Enter 发送）"></textarea>
+      <button id="send">行动</button>
+      <button id="gear">设置</button>
+    </div>
+  </footer>
+  <div id="panel" class="hidden"></div>
+</div>
+<div id="start">
+  <div id="start-grid">
+    <div id="start-left">
+      <div class="title">
+        <h1>小猫的世界</h1>
+        <p class="dim" id="buildline">AI 驱动的世界模拟 · …</p>
+      </div>
+      <nav id="start-menu"></nav>
+    </div>
+    <aside id="start-side"></aside>
+  </div>
+</div>
+<div id="modal" class="hidden"></div>
+<div id="toast"></div>
+<div id="loadmask" class="hidden"><div class="lm-circle"></div><div class="lm-text">✨ AI 正在从零构建世界…</div><div class="lm-sub">通常 10~60 秒（正在消耗 token）。完成后会弹出预览卡，[进入] 才会替换当前世界。</div></div>
+<script>
+(function () {
+  window.__lastErr = '';
+  window.addEventListener('error', function (e) {
+    window.__lastErr = String(e.message || e).slice(0, 300);
+    try { document.title = '\u26a0ERR: ' + window.__lastErr.slice(0, 80); } catch (_) { }
+    try {
+      var d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#3a1010;color:#ffd9d9;padding:10px 14px;font-size:12px;font-family:monospace;';
+      d.textContent = ('\u26a0 页面错误：' + window.__lastErr + ' （截图或复制这行发我）');
+      document.body.appendChild(d);
+    } catch (_) { }
+  });
+  document.addEventListener('DOMContentLoaded', function () {
+    setTimeout(function () {
+      var j = document.getElementById('jsok');
+      var s = document.getElementById('start-menu');
+      if (!j && s && s.childElementCount === 0) {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9998;background:#3a1010;color:#ffd9d9;padding:8px 12px;font-size:12px;';
+        d.textContent = '\u26a0 app.js 未能执行（菜单为空）。最后错误：' + (window.__lastErr || '(未捕获但未执行，可能脚本未加载)');
+        document.body.appendChild(d);
+      }
+    }, 1500);
+  });
+})();
+</script>
+<script src="/app.js?v=34"></script>
+</body>
+</html>

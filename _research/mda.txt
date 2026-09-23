@@ -1,0 +1,55 @@
+MDA: A Formal Approach to Game Design and Game Research Robin Hunicke, Marc LeBlanc, Robert Zubek 
+hunicke@cs.northwestern.edu, marc_leblanc
+@alum.mit.edu, rob@
+cs.northwestern.edu 
+ 
+ 
+Abstract In this paper we present the MDA framework (standing for 
+Mechanics, Dynamics, and 
+Aesthetics), developed and 
+taught as part of the Game 
+Design and Tuning Workshop at 
+the Game Developers Conference, San Jose 2001-2004. MDA is a formal approach to understanding games  one which attempts to bridge th
+e gap between game design and 
+development, game criticism, and technical game research. We believe this methodology will clarify and strengthen the iterative processes of develope
+rs, scholars and researchers 
+alike, making it easier for all parties to decompose, study 
+and design a broad class of
+ game designs and game 
+artifacts. Introduction All artifacts are created within some design methodology. 
+Whether building a physical prototype, architecting a software interface, constructing an argument or implementing a series of controlled experiments  design methodologies guide the creative thought process and help ensure quality work. Specifically, iterative, qualitative and quantitative analyses support the designer in two important ways. They help her analyze the 
+end result
+ to refine implementation, and 
+analyze the 
+implementation
+
+ to refine the result. By 
+approaching the task from both perspectives, she can consider a wide range of possibilities and interdependencies. This is especially important when working with computer and video games, where the interaction between coded subsystems creates complex, dynamic (and often unpredictable) behavior. Designers and researchers must consider interdependencies carefully before implementing changes, and scholars must recognize them before drawing conclusions about the nature 
+of the experience generated. 
+ In this paper we present the MDA framework (standing for Mechanics, Dynamics, and Aesthetics), developed and 
+taught as part of the Game Design and Tuning Workshop at the Game Developers Conference, San Jose 2001-2004 [LeBlanc, 2004a]. MDA is a formal approach to understanding games  one which attempts to bridge the gap between game design and development, game criticism, and technical game research. We believe this 
+methodology will clarify and strengthen the iterative 
+processes of developers, scholars and researchers alike, making it easier for all parties to decompose, study and design a broad class of game designs and game artifacts. Towards a Comprehensive Framework Game design and authorship happen at many levels, and the fields of games research and development involve 
+people from diverse creative and scholarly backgrounds. While its often necessary to 
+focus on one area, everyone, 
+regardless of discipline, will at some point need to consider issues outside that area: base mechanisms of game systems, the overarching design goals, or the desired experiential results of gameplay. AI coders and researchers are no exception. Seemingly inconsequential decisions about data, representation, algorithms, tools, vocabulary 
+and methodology will trickle 
+upward, shaping the final gameplay. Similarly, all desired user experience must bottom out, somewhere, in code. As games continue to generate increasingly complex agent, object and system behavior, AI and game design merge. 
+ Systematic coherence comes 
+when conflicting constraints 
+are satisfied, and each of the games parts can relate to each other as a whole. D
+ecomposing, understanding and 
+creating this coherence requires travel between all levels of abstraction  fluent motion from systems and code, to content and play expe
+rience, and back. 
+ We propose the MDA framework as a tool to help designers, researchers and scholars perform this translation. MDA Games are created by designers/teams of developers, and consumed by players. They
+ are purchased, used and 
+eventually cast away like most other consumable goods. 
+ 
+ 
+Game 
+
+Creates Consumes 
+Designer
+Player
+The production and consumption of game artifacts. 
+

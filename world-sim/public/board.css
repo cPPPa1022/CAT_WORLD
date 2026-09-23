@@ -1,0 +1,58 @@
+/* board.css —「世界的现在」v4：层次律（配合 board.js）
+
+   上一版每块都套卡片底色 → 重量拉平 → 用户："没有主次之分"。
+   这一版**一个卡片底色都不用**，层次只由四样东西决定：
+     位置（上=处境，中=戏，下=氛围）· 字号 · 亮度 · 留白。
+   屏幕只有一处最亮：本回合最后开口的那个人。
+   ══════════════════════════════════════════════════════════════════ */
+
+#layout.board { display: flex !important; flex-direction: column !important; width: 100% !important; max-width: none !important; margin: 0 !important; }
+#layout.board #world { display: none !important; }
+#layout.board #now {
+  width: auto !important; flex: 1 1 auto !important;
+  border-left: 0 !important; border-top: 0 !important;
+  padding: 18px 26px 8px !important; overflow-y: auto !important;
+  display: flex !important; flex-direction: column !important;
+}
+.board { width: 100%; max-width: 1040px; margin: 0 auto; }
+
+/* ── ① 世界带：一行读数（处境）。最暗的一档，扫一眼就够 ─────────── */
+.bband { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.brow { display: flex; gap: 10px; align-items: baseline; }
+.brow-k { flex: 0 0 34px; color: #3f4453; font-size: var(--fs-caption); letter-spacing: .08em; user-select: none; }
+.brow-v { flex: 1; min-width: 0; color: var(--fg-3); font-size: var(--fs-caption); line-height: 1.9; }
+
+/* ── ② 焦点区：谁在场、说了什么。主角与配角差一档 ───────────────── */
+.bfocus { display: flex; flex-direction: column; gap: 24px; }
+.bname-row { display: flex; align-items: baseline; gap: 9px; margin-bottom: 6px; }
+.bname { font-size: 17px; font-weight: 500; color: var(--fg-2); letter-spacing: .02em; }
+.bperson.focus .bname { font-size: 21px; font-weight: 600; color: var(--accent); }
+.bmood { font-size: var(--fs-caption); color: var(--fg-3); }
+.bempty { color: var(--fg-3); font-size: var(--fs-meta); }
+
+/* 台词：配角 17px 次要亮，主角 20px 最亮（全屏最亮的一处） */
+.bs { display: flex; gap: 9px; margin: 4px 0; }
+.bs-k { flex: 0 0 40px; color: #3f4453; font-size: var(--fs-caption); line-height: var(--lh-ui); letter-spacing: .04em; user-select: none; }
+.bs-v { flex: 1; min-width: 0; }
+.bs.said .bs-v { font-size: var(--fs-ui); line-height: var(--lh-ui); color: var(--fg-2); }
+.bperson.focus .bs.said .bs-v { font-size: 20px; line-height: 34px; color: #f6f8fc; }
+.bs.detail .bs-v { font-size: var(--fs-meta); line-height: var(--lh-meta); color: var(--fg-3); }
+.bperson.focus .bs.detail .bs-v { color: var(--fg-2); }
+
+/* ── ③ 氛围区：环境 / 旁白 / 听说。全屏最暗的一档 ───────────────── */
+.bamb { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); }
+.bamb .bs-k { color: #3a3f4d; }
+.bamb .bs-v { font-size: var(--fs-caption); line-height: 1.8; color: var(--fg-3); }
+.bamb .bs.out .bs-v { color: var(--warn); }
+.bamb .bs.react .bs-v { color: var(--fg-3); }
+.bamb .bs.me .bs-v { color: var(--fg-2); }
+/* 玩家被 AI 点成主角时，给同样的放大（focus:['player']） */
+.bamb .bs.me.focus .bs-v { font-size: 20px; line-height: 34px; color: #f6f8fc; }
+.bamb .bs.me.focus .bs-k { color: var(--accent); }
+
+/* ── ④ 更早 ─────────────────────────────────────────────────────── */
+.bfold { margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--line); }
+.bfold-btn { all: unset; cursor: pointer; color: var(--fg-3); font-size: var(--fs-caption); padding: 4px 0; display: block; }
+.bfold-btn:hover { color: var(--fg-2); }
+.bfold-box { margin-top: 6px; max-height: 30vh; overflow-y: auto; }
+.bfl { color: var(--fg-3); font-size: var(--fs-meta); line-height: var(--lh-meta); padding: 2px 0; }

@@ -1,0 +1,5 @@
+# 禁止 git 碰行尾。
+# 理由不是洁癖：world-sim/scripts/dist-check.js 断言「交付副本与源码**逐字节一致**」，
+# 而 dist-app 是手工 Copy-Item 出来的。一旦 git 在检出时做 LF↔CRLF 转换，
+# 源码与副本就会差出字节，这条不变量会莫名其妙变红。
+* -text

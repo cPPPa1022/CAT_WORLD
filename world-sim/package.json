@@ -1,0 +1,21 @@
+{
+  "name": "world-sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "小猫的世界 - AI 驱动的世界模拟 SLG（初版原型，零依赖）",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:web": "node server.js",
+    "test": "node scripts/run-all.js --assert-only",
+    "test:all": "node scripts/run-all.js",
+    "pack": "electron-packager . 世界模拟器 --platform=win32 --arch=x64 --out=dist-app --overwrite --ignore=scripts --ignore=data --ignore=dist --ignore=dist-prep --ignore=sea-prep.blob"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "electron": "^33.4.11"
+  }
+}

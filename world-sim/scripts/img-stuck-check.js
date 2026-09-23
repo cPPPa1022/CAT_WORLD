@@ -1,0 +1,23 @@
+// img-stuck-check.js — 出图卡住/ComfyUI 没开的回归（v1.79）
+'use strict';
+const fs = require('fs'); const path = require('path');
+let pass = 0, fail = 0;
+const ok = (c, m) => { if (c) { pass++; console.log('  OK   ' + m); } else { fail++; console.log('  FAIL ' + m); } };
+console.log('');
+console.log('出图：ComfyUI 没开要秒失败；卡在「出图中」的任务要能收尾');
+const sv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+ok(/async function comfyAlive/.test(sv), '★ 有出图前预检 comfyAlive');
+ok(/if \(!\(await comfyAlive\(base\)\)\)/.test(sv), '★★ 预检没过就**立刻** fail（原来要挂 120 秒）');
+ok(/它没开吗？开好再点重试/.test(sv), '★ 报错说人话（指出是 ComfyUI 没开）');
+ok(/function reviveStaleRenders/.test(sv), '★ 有「收尾卡住的任务」');
+ok(/if \(reviveStaleRenders\(d\)\)/.test(sv), '★★ 载入世界时收尾（rendering 只属于当前进程）');
+ok(/!__imgBusy && reviveStaleRenders\(current\)/.test(sv), '★ /api/state 也会自愈一次');
+ok(/async function fetchT/.test(sv), '★ 有带超时的 fetch');
+const noTo = (sv.match(/await fetch\(base \+ '\/(prompt|history|view)/g) || []);
+ok(noTo.length === 0, '★★ ComfyUI 的三个 fetch 全带超时（原来半开连接会让队列永久堵死）');
+ok(/\/prompt', \{[\s\S]{0,200}?\}, 30000\)/.test(sv), '★ /prompt 30 秒超时');
+ok(/5 分钟后强制解锁队列|300000/.test(sv), '★ 队列看门狗（卡死 5 分钟强制解锁 + 把 rendering 标 fail）');
+ok(/点 🔁 重试/.test(sv), '★ 收尾后的提示是可操作的（去点重试）');
+console.log('');
+console.log('==== img-stuck-check: ' + pass + ' passed, ' + fail + ' failed ====');
+process.exitCode = fail ? 1 : 0;

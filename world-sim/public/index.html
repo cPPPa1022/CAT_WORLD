@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小猫的世界 · world-sim</title>
+<link rel="stylesheet" href="/style.css?v=73">
+<link rel="stylesheet" href="/tokens.css?v=59">
+<link rel="stylesheet" href="/studio.css?v=17">
+<!-- UX 版（2026-09-19）：第一印象覆盖层。必须排在最后，它靠覆盖前三个文件生效。 -->
+<link rel="stylesheet" href="/ux.css?v=1">
+<!-- UX v2：「各就各位」版面（board.js）。加 ?stream 退回流式叙事。 -->
+<link rel="stylesheet" href="/board.css?v=2">
+</head>
+<body>
+<div id="app" class="hidden">
+  <header id="worldbar"><div id="topbar"></div></header>
+  <!-- v1.33 新布局：世界（场景）/ 此刻（叙事）/ 注意到（感知）/ 行动 —— 四层，无并列面板 -->
+  <main id="layout">
+    <section id="world"></section>
+    <section id="now"></section>
+  </main>
+  <footer id="dock">
+    <div id="statline" class="hidden"></div>
+    <div id="notice"></div>
+    <div id="quicktabs"><span class="qt" data-k="say">我说</span><span class="qt" data-k="act">我做</span><span class="qt-hint">点一下只是帮你起个头，直接写也行</span></div>
+    <div id="inputbar">
+      <textarea id="cmd" rows="1" placeholder="你想做什么？直接写，世界会听懂"></textarea>
+      <button id="send">执行</button>
+      <button id="gear" class="hidden"></button>
+    </div>
+  </footer>
+  <div id="panel" class="hidden"></div>
+</div>
+<div id="start">
+  <div id="start-grid">
+    <div id="start-left">
+      <div class="title">
+        <h1>小猫的世界</h1>
+        <p class="dim" id="buildline">AI 驱动的世界模拟 · …</p>
+      </div>
+      <nav id="start-menu"></nav>
+    </div>
+    <aside id="start-side"></aside>
+  </div>
+</div>
+<div id="modal" class="hidden"></div>
+<div id="toast"></div>
+<div id="loadmask" class="hidden"><div class="lm-circle"></div><div class="lm-text">✨ AI 正在从零构建世界…</div><div class="lm-sub">通常 10~60 秒（正在消耗 token）。完成后会弹出预览卡，[进入] 才会替换当前世界。</div></div>
+<script>
+(function () {
+  window.__lastErr = '';
+  /* v1.87：浏览器侧静默降级的统一上报口。
+     引擎侧已有 src/degraded.js（135 个点位），前端这批空 catch 此前**完全没有记录** ——
+     页面里"某个按钮没反应"就属于这类：异常被吞了，控制台里什么都没有。 */
+  window.__degLog = [];
+  window.__deg = function (where, e) {
+    try {
+      window.__degLog.push({ where: String(where || '?'), msg: String((e && e.message) || e || '').slice(0, 120) });
+      if (window.__degLog.length > 60) window.__degLog.shift();
+      clearTimeout(window.__degT);
+      window.__degT = setTimeout(function () {
+        var items = window.__degLog.splice(0, 20);
+        if (!items.length) return;
+        try { fetch('/api/deg', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items }) }).catch(function () { }); } catch (e2) { }
+      }, 1500);
+    } catch (e3) { }
+  };
+  window.addEventListener('error', function (e) {
+    window.__lastErr = String(e.message || e).slice(0, 300);
+    try { document.title = '\u26a0ERR: ' + window.__lastErr.slice(0, 80); } catch (_) { }
+    try {
+      var d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#3a1010;color:#ffd9d9;padding:10px 14px;font-size:12px;font-family:monospace;';
+      d.textContent = ('\u26a0 页面错误：' + window.__lastErr + ' （截图或复制这行发我）');
+      document.body.appendChild(d);
+    } catch (_) { }
+  });
+  document.addEventListener('DOMContentLoaded', function () {
+    setTimeout(function () {
+      /* UX 版（2026-09-19）修正：原来靠"#jsok 角标在不在"判断 app.js 有没有跑起来 ——
+         而 #jsok 现在只在 ?dev 出现（构建号不上桌），于是**玩家一进世界就会看到一条假的红色报错**。
+         判据换成真问题本身：既没进世界、菜单又是空的。 */
+      var j = document.getElementById('jsok');
+      var s = document.getElementById('start-menu');
+      var appEl = document.getElementById('app');
+      var inGame = appEl && !appEl.classList.contains('hidden');
+      if (!j && !inGame && s && s.childElementCount === 0) {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9998;background:#3a1010;color:#ffd9d9;padding:8px 12px;font-size:12px;';
+        d.textContent = '\u26a0 app.js 未能执行（菜单为空）。最后错误：' + (window.__lastErr || '(未捕获但未执行，可能脚本未加载)');
+        document.body.appendChild(d);
+      }
+    }, 1500);
+  });
+})();
+</script>
+<script src="/app.js?v=114"></script>
+<script src="/board.js?v=2"></script>
+<script src="/studio.js?v=7"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+'use strict';
+(async () => {
+  const B = 'http://127.0.0.1:' + (process.env.PORT || '3888');
+  const post = (p, b) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) }).then(r => r.json());
+  const demo = await post('/api/demo', {});
+  const v = demo.view;
+  console.log('[1] build=' + (await (await fetch(B + '/api/version')).json()).build);
+  console.log('[2] log.known=' + v.log.known.length + ' shadows=' + v.log.shadows.length + ' | 用户看得到的：' + v.log.known[0].k);
+  const t1 = await post('/api/turn', { text: '你好' });
+  console.log('[3] 你好 → recalls=' + JSON.stringify(t1.recalled.map(x => x.id)));
+  const t2 = await post('/api/turn', { text: '我想赊账' });
+  console.log('[4] 赊账 → recalls=' + JSON.stringify(t2.recalled.map(x => x.id)) + '  hint=' + (t2.recalled[0] || {}).hint);
+  const t3 = await post('/api/turn', { text: '我听会儿收音机' });
+  console.log('[5] 收音机 → recalls=' + JSON.stringify(t3.recalled.map(x => x.id)));
+  const t4 = await post('/api/turn', { text: '我看看窗外' });
+  console.log('[6] 窗外 → intent=' + t4.intent.kind + ' beat=' + (t4.frame.beats || []).map(b => b.text).filter(Boolean).join('|').slice(0, 40));
+  const t5 = await post('/api/turn', { text: '买牛奶' });
+  console.log('[7] 买牛奶 → cash=' + t5.view.money.cash + ' inv=' + t5.view.inventory.map(x => x.name).join(','));
+  console.log('[8] tools=' + v.tools.map(t => t.name).join(',') + ' marks=' + v.artMarks.length + ' sceneArt=' + (v.sceneArt || '').split('\n').length + '行');
+  await post('/api/quit', {});
+})().catch(e => { console.error(e); process.exit(1); });

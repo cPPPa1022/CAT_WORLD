@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────
+# 小猫的世界 · 忽略规则
+# 原则：只跟踪「手写的、不可再生的」东西。
+#       依赖、构建产物、缓存、临时目录、大数据、导出包，一律不入库。
+# ─────────────────────────────────────────────────────────────
+
+# 依赖（无运行时依赖，只有 electron 开发/打包用）
+node_modules/
+
+# 构建与打包产物（可用 npm run pack / bundle 再生）
+world-sim/dist/
+world-sim/dist-app/
+world-sim/dist-prep/
+world-sim/electron-bin.zip
+world-sim/sea-prep.blob
+
+# 缓存与工具自有数据
+.npm-cache/
+.dsh/market/
+.dsh/tools/
+.dsh/backups/
+.dsh/cache/
+.dsh/tmp/
+
+# 临时目录（每次任务产生，用完即弃）
+.tmp-*/
+
+# 数据（开发模式数据根：含 477 个测试世界；用户真实存档在 %APPDATA%）
+world-sim/data/
+
+# 导出包与截图（体积大、可再生成；需要时用 git add -f 单独纳入）
+*.zip
+界面截图_*/
+UI截图包/
+外发评审包_*/
+盲评包_*/
+评审回执_*/
