@@ -1332,9 +1332,24 @@ async function runTurn(data, text, cfg, opts) {
   data.sceneLog = data.sceneLog || [];
   const spanStart = data.sceneLog.length;
   data.sceneLog.push(line('user-action', '你: ' + text));
-  if (out.frame.tag) {
+  /* ★ v2.13 **状态块必须由状态生成，不许由叙事生成。**
+     原来这一行直接把 out.frame.tag（**AI 自己写的一行字**）印成场次标签。
+     实测后果：AI 写「赵家小洋楼·院门口」，而 current.sceneId 还是 p1（二楼游戏室）——
+     屏幕上写着"院门口"，玩家就以为自己出去了；**状态一步没动，而他无从知道**。
+     现在标签由引擎拼：地点名从 sceneId 查、时段/天气从 current 取 —— 它永远和状态一致，
+     所以"你没出去"这件事**当场看得见**。
+     AI 的 tag 不采纳；但它若明显在演另一个地方（= 想移动却没报地点变化），记一笔。 */
+  const placeNow = (data.entities && data.current.sceneId && data.entities[data.current.sceneId]) || null;
+  const placeName = (placeNow && placeNow.name) || '';
+  if (placeName) {
+    const tagNow = '[' + placeName + ' · ' + RT.dayPart(data.current.time) + ' · ' + String(data.current.weather || '').slice(0, 24) + ']';
     const last = data.sceneLog[data.sceneLog.length - 1];
-    if (!(last && last.type === 'stage-tag' && last.text === out.frame.tag)) data.sceneLog.push(line('stage-tag', out.frame.tag));
+    if (!(last && last.type === 'stage-tag' && last.text === tagNow)) data.sceneLog.push(line('stage-tag', tagNow));
+    if (out.frame.tag && String(out.frame.tag).indexOf(placeName) < 0 && String(out.frame.tag).replace(/[\[\]·\s]/g, '').length > 3) {
+      try { DEG.hit('game.js:tag', new Error('AI 的场次标签与状态不符：tag="' + String(out.frame.tag).slice(0, 40) + '" 而你在「' + placeName + '」—— 它多半在演"已经移动"却没报地点变化')); } catch (e) {}
+    }
+  } else if (out.frame.tag) {
+    data.sceneLog.push(line('stage-tag', out.frame.tag));   // 没有地点实体（老档/demo）：退回 AI 的 tag
   }
   const hasTag = data.sceneLog.length > spanStart + 1 && data.sceneLog[spanStart + 1] && data.sceneLog[spanStart + 1].type === 'stage-tag';
   const beatsStart = spanStart + 1 + (hasTag ? 1 : 0);

@@ -67,7 +67,7 @@ function sevDefault(type) { return SEV_DEFAULT[String(type || '')] || 'L1'; }
 // exec = 执行器名（game.js applyUpdates 里的实现）。空字符串 = **还没实现**，断言会报红。
 // hint = 生成提示词时给 AI 看的约束（只写人话，不写引擎词汇）。
 const UPDATE_TYPES = [
-  { type: '地点变化',     exec: 'applyMove',     hint: '带 cause；只能去**有通路**的地方，耗时会算' },
+  { type: '地点变化',     exec: 'applyMove',     hint: '带 cause；只能去**有通路**的地方，耗时会算。★ **玩家要移动时（"出去/回家/去某处/下楼"）你必须发这一条** —— 只写"你走出门"的动作**不算移动**：地点不会变、屏幕上的地点名也不会变，玩家会以为自己出去了而其实没有' },
   { type: '人物离开',     exec: 'applyLeave',    hint: '带 cause；走的人在场景里会真的离开' },
   { type: '人物出现',     exec: 'applySpawn',    hint: '必须带 spawn{name,appearance,role} + cause + relation —— 禁止凭空登场' },
   { type: '物品获取',     exec: 'applyItemGet',  hint: 'item: 东西的名字 + **causeRef（这东西哪来的）** —— 捡的/买的/谁给的，得说得出主' },
