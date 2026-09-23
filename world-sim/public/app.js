@@ -1,4 +1,4 @@
-// app.js — 世界模拟器前端 v1.8 FINAL（全局委托 · 舞台模式 · 世界声明式工具）
+﻿// app.js — 世界模拟器前端 v1.8 FINAL（全局委托 · 舞台模式 · 世界声明式工具）
 'use strict';
 
 let V = null;
@@ -28,7 +28,7 @@ let __galleryReady = false;   // 图库（第二个数据源）是否已针对�
 let __lastFxSeq = 0;          // 本回合演出（fx.js 词表）已播到的序号
 let __lastDocSeq = 0;         // 文书展开（文档对象）已展开到的序号
 let __expDay = '';            // v1.54「你经历过」按哪一天筛选
-const BUILD = 'v3.3';
+const BUILD = 'v3.4';
 /* v1.86：**开发者字段走 /api/dev**（世界视图 /api/state 默认不含它们）。
    为什么：原来 buildView 一份 JSON 兼作世界呈现 + 设置面板 + 诊断，任何新增字段默认就对前端可见 ——
    "开发者信息不上桌"（catworld-ui 越权红线 4）只能靠纪律守。现在默认隐藏，只在 ?dev 或设置面板里取。 */

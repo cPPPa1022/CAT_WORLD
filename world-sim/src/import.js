@@ -302,7 +302,25 @@ function analyzeSystem() {
     AI.charterShort() + '你是【世界模拟器】的**世界分析师**。输入是一张酒馆角色卡的**全部内容**（卡正文 + 开场白 + 备选开局 + 世界书）。',
     '你的任务**不是翻译、不是填表**：是**读懂它、并且判断**。这一步**不要输出 JSON、不要代码块、不要复述原文大段**，只写中文分析稿。',
     '',
-    '必须回答下面七件事，用小标题分段，写清楚，别客套：',
+    '必须回答下面七件事，用小标题分段，写清楚，别客套。',
+    '',
+    /* ★ v3.4 · 身份证必须排在**最前面**。理由不是美观，是**存活**：
+       实测用户那张「东北萝莉」卡（5876 字分析稿）写到第四段就被输出上限截断，
+       §一/§五/§六/§七 一个字都没产出 —— 而"这张卡是围绕什么打的"正是全世界最需要的那一句。
+       长枚举（三、四两段）永远吃光配额，所以短而关键的东西必须第一个到达。 */
+    '## ★ 零、先给这张卡发一张身份证（**必须写在最前面，四行，字段名一字不改**）',
+    '一句话回答：**这张卡是围绕什么打的**。严格照下面四行写、每行只写一句、不要展开：',
+    '· 题材 → 3~5 个标签，用 / 隔开（如 NTL / 出轨 / 日常 / 养成 / 悬疑 / 战斗）',
+    '· 戏 → 核心冲突是什么 + **谁的欲望**在推动它（≤' + CONTRACT.IDENTITY_LEN + '字）',
+    '· 调性 → 基调温度（日常·压抑·荒诞·热血…）+ 现实程度（有没有超自然）',
+    '· 不是什么 → 这张卡**不是**什么，用来防跑偏（例：不是纯日常温情卡 / 不是战斗卡）',
+    '照这个格式输出那四行（把……换成你的判断，不要照抄括号里的说明）：',
+    '题材：……',
+    '戏：……',
+    '调性：……',
+    '不是什么：……',
+    '⚠️ 为什么这四行必须排第一：下面那七段是长枚举，很容易把输出配额吃光；身份证交了就够用了，',
+    '   七段能写多少写多少（宁可每段短一点，也不要把身份证挤掉）。',
     '',
     '## 一、这是个什么世界',
     '时代 / 地域 / 尺度（一条街？一座城？一个封闭空间？）/ 基调温度（日常·压抑·荒诞·热血…）/ 现实程度（有没有超自然）。',
@@ -328,8 +346,10 @@ function analyzeSystem() {
     '把卡里所有自相矛盾的地方列出来：正文 vs 世界书 / 性格描述 vs 开场白行为 / 时代 vs 细节 / 设定 vs 能力 / 时间线 / 称呼与名字不统一 / 废弃残稿。',
     '每条给：**哪两处矛盾 / 建议取哪个 / 为什么**。',
     '',
-    '## 六、什么最重要',
-    '这个世界的**核心冲突**是什么？**谁的欲望**在推动它？什么东西一旦被打破，世界就要变？',
+    /* v3.4：这一段原来让模型把核心冲突再展开一遍，与身份证「戏」重复 —— 而实测证明配额不够。
+       现在只留最后一句，把省下的配额让给三、四两段（那两段才是真正长的）。 */
+    '## 六、什么最重要（**身份证的「戏」已经答过，这里只补最后一句**）',
+    '什么东西一旦被打破，世界就要变？**一句就够，不要再展开**。',
     '',
     '## 七、开场那一刻的实况',
     '开场白第一句话发生时：谁在场、谁在哪（隔壁？门外？外地？）、玩家在哪、什么时间。',
@@ -344,6 +364,54 @@ async function analyzeLLM(cfg, card, onDelta) {
     { role: 'user', content: '卡名: ' + (card.name || '未命名') + String.fromCharCode(10) + '卡正文:' + String.fromCharCode(10) + text }
   ], Math.min(8192, AI.cfgMax(cfg)), onDelta);
   return String(r || '').trim();
+}
+/* ★ v3.4 · 从分析稿里**摘**出身份证（0 token、纯查表）。
+   为什么是"摘"而不是"让第二步的 AI 再产一遍"：第二步是 JSON 产出，它自己也会被输出上限截断 ——
+   把同一条信息交给它复述，等于多一个会丢的地方。分析稿里已经有原文，直接摘最稳。
+   只在**开头 1500 字**里找（不是全文找）：身份证被要求排在最前面，这个窗口把"排到最后被截断"
+   变成显式的摘不到，而不是从正文别处误摘一句像身份证的话。
+   缺任何一行 → null。**宁可没有身份证，也不要半张** —— 半张会变成误导 AI 的定调。
+   值太短（<4 字）也拒：那是模型把模板里的「……」照抄下来了。 */
+/* ★ v3.4 · 分析这一步可能被模型**拒答**（真实发生：用户那张卡因涉及未成年人的性内容，
+   模型回了一封 522 字的拒信；同一张卡另一次回了 184 个空白字符）。
+   拒信**不是分析稿** —— 但它原来会被当成「【先一步的分析稿 · 必须遵守】」喂给第二步去建世界。
+   判据用两条一起（单看关键词会误伤"卡里写了'我不能离开'"这种正文；单看长度会误伤短分析）：
+     ① 短（<800 字）② 开头出现拒答话术。
+   后果不是静默降级：拒答会记进 __warnings，在卡盒里给用户看见 ——
+   "这一步被拒了，世界是没做分析直接建的"必须让人知道，否则玩家会以为人物关系是 AI 认真读过的。 */
+function looksLikeRefusal(text) {
+  const s = String(text || '');
+  if (!s || s.length >= 800) return false;
+  return /我不能|我无法|无法|不能帮|抱歉|不便|拒绝|不能分析|无法分析/.test(s.slice(0, 300));
+}
+function parseIdentity(text) {
+  const head = String(text || '').slice(0, 1500);
+  if (!head) return null;
+  const out = {};
+  for (const f of CONTRACT.IDENTITY_FIELDS) {
+    const m = head.match(new RegExp('^[ \t]*' + f + '[ \t]*[:：][ \t]*(.+)$', 'm'));
+    if (!m) return null;
+    const v = String(m[1]).replace(/\*\*/g, '').trim().replace(/[ \t]+/g, ' ').slice(0, CONTRACT.IDENTITY_LEN);
+    /* 拒「模型把模板里的『……』照抄下来」这一种。
+       ⚠️ 判据必须是**形状**，不能是长度：拿长度判会把"调性：日常"（2 个字，完全合法）一起杀掉，
+       我第一版就是这么写的，被自己的断言抓出来（card-scan-check [5] 的夹取那条）。
+       只由省略号/点号/空白组成的值 = 没填。 */
+    if (v.length < 2 || /^[.．。…·、\s]+$/.test(v)) return null;
+    out[f] = v;
+  }
+  return out;
+}
+/* 归一化一张身份证（外部来源：世界包 / 旧档 / 手改存档）。
+   要碰它的地方一律先过这里 —— 半张、超长、非字符串都在这一处收口。 */
+function normIdentity(v) {
+  if (!v || typeof v !== 'object') return null;
+  const out = {};
+  for (const f of CONTRACT.IDENTITY_FIELDS) {
+    const x = String(v[f] == null ? '' : v[f]).trim().replace(/[ \t]+/g, ' ').slice(0, CONTRACT.IDENTITY_LEN);
+    if (!x) return null;
+    out[f] = x;
+  }
+  return out;
 }
 async function scanLLM(cfg, card, analysis, onDelta) {
   const text = cardFull(card);   // v1.25：全量（含世界书）——旧版只发 cardText，世界书一个字没进
@@ -956,6 +1024,11 @@ function packToData(pack, opts) {
   data.meta.worldbookDropped = (pack.character_book && Array.isArray(pack.character_book.dropped)) ? pack.character_book.dropped : [];
   data.journal = buildJournal(pl);
   data.meta.rules = pack.rules || [];
+  /* v3.4：卡的身份证（每回合由 ai.js 注入 system 的一行）。
+     ⚠️ 别和 data.meta.theme 混：那个是**界面皮肤**（terminal/ink/jade），见本文件 361 行。
+     没有就**不写这个键**（老存档/启发式兜底都没有）—— ai.js 判空后整行不出现，不是空行、不是占位串。 */
+  const idn = normIdentity(mdata.identity);
+  if (idn) data.meta.identity = idn;
   data.meta.seeds = (pack.seeds || []).concat(Array.isArray(pack.premise) ? pack.premise.map(p => '【后续】' + String(p).slice(0, 80)) : []);
   data.meta.importSource = pack.meta && pack.meta.name ? pack.meta.name : (data.meta.name || '');
   // v1.59 开关穿透 L2b：「带入我的身份档案」原来只在「AI 生成世界」生效，
@@ -1012,6 +1085,14 @@ async function scanCard(card, cfg, allowFallback, onPhase) {
     say('第 1/2 步 · 通读全卡做分析（等待 AI 回复）', 6);
     try { analysis = await analyzeLLM(cfg, card, cnt); }   // 第一步：读一遍 → 判断
     catch (e) { analysis = ''; }                            // 分析失败不致命：退化成"直接产出"
+    /* v3.4：身份证从分析稿里摘出来，钉在 pack.meta 上（packToData 会把它落进 data.meta.identity）。
+       摘不到就是没有 —— 不编、不补、不进提示词。 */
+    let identity = null;
+    /* v3.4：拒答先摘出来 —— 它绝不能当成"分析稿"进第二步。 */
+    let refused = false;
+    try { refused = looksLikeRefusal(analysis); } catch (e) { DEG.hit('import.js:refusal', e); }
+    if (refused) analysis = '';
+    try { identity = parseIdentity(analysis); } catch (e) { DEG.hit('import.js:identity', e); }
     say('第 2/2 步 · 按分析稿建成世界（等待 AI 回复）', 50);
     try {
       pack = await scanLLM(cfg, card, analysis, cnt);       // 第二步：拿判断去建世界
@@ -1023,7 +1104,11 @@ async function scanCard(card, cfg, allowFallback, onPhase) {
       try { pack.character_book = routeCharacterBook(card, pack.worldbook); } catch (e) { DEG.hit('import.js:worldbook', e); }
       try { delete pack.worldbook; } catch (e) { /* 忽略 */ }
       pack.__warnings = scanWarnings(card, pack);
-      return { pack, mode: 'llm', analysis: analysis };
+      /* v3.4：这一步被拒了就说出来 —— 世界是**没做分析**直接建的，人物与关系大概率不准。
+         （不静默：玩家会以为 AI 认真读过卡，而实际上第二步拿到的是空的。） */
+      if (refused) pack.__warnings = (pack.__warnings || []).concat(['通读全卡的分析这一步被模型拒绝了（多半是内容政策）：世界是**没有分析稿**直接建的，人物、关系、空白项的准确度会明显下降。']);
+      if (identity) pack.meta.identity = identity;          // v3.4 身份证（摘不到就不写这个键）
+      return { pack, mode: 'llm', analysis: analysis, identity: identity, refused: refused };
     }
     if (!why) why = 'AI 返回里没有 meta（不是可用的世界包形状）';
     if (allowFallback) { const hp = hpOnce(); return { pack: hp, mode: 'heuristic', note: why, warnings: hp.__warnings || [] }; }
@@ -1034,4 +1119,4 @@ async function scanCard(card, cfg, allowFallback, onPhase) {
   return { pack: hp, mode: 'heuristic', note: '未配置模型（演示模式）', warnings: hp.__warnings || [] };
 }
 
-module.exports = { pngExtract, parseSource, normalizeCard, cardText, scanCard, packToData, heuristicPack, scanSystem, analyzeSystem, routeCharacterBook };
+module.exports = { pngExtract, parseSource, normalizeCard, cardText, scanCard, packToData, heuristicPack, scanSystem, analyzeSystem, parseIdentity, normIdentity, looksLikeRefusal, routeCharacterBook };

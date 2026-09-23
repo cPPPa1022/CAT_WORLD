@@ -155,6 +155,17 @@ const SUGGEST_LEN = 24;    // 单条字数上限：念头是短的
 // 四种性质（借酒馆那份成熟预设的谱系）——全是"该干什么"会变成任务列表，所以要留出跑题的
 const SUGGEST_KINDS = ['顺延当前场景', '小幅推进', '时间推进', '跑题的新奇念头'];
 
+/* ---------- 卡的身份证（v3.4） ----------
+   用户原话：「这张卡主要是什么样子的卡…任何卡都有给主题吧？相当于给这个卡颁发一个身份证」。
+   它回答一个问题：**这个世界是围绕什么打的**（不是"后来会发生什么"）。
+   划清邻居（三个都容易被误当成它）：
+     · meta.theme   = **界面皮肤**（terminal / ink / jade / wasteland，见 import.js:361）—— 与内容无关，名字早被占了，所以这个字段叫 identity；
+     · meta.rules   = 世界规则（**不能做什么**）—— 禁令，不是方向；
+     · meta.seeds   = 来自 pack.premise 的「后续走向」—— 那是"后来会怎样"，这是"这出戏在演什么"。
+   ⚠️ 它是**定调，不是轨道**：不规定下一步该演什么；两条路都合理时选更贴它的；玩家跑题就跟着走。 */
+const IDENTITY_FIELDS = ['题材', '戏', '调性', '不是什么'];
+const IDENTITY_LEN = 48;   // 每行上限：它是每回合都带着走的一行字，不是散文
+
 // ---------- requests 契约（世界导演） ----------
 const REQUEST_KINDS = ['event', 'person', 'place', 'item', 'action', 'news', 'city', 'org'];
 
@@ -279,6 +290,7 @@ module.exports = {
   promptUpdatesBlock: promptUpdatesBlock,
   BEAT_TYPES: BEAT_TYPES, BEAT_LIMITS: BEAT_LIMITS, REQUEST_KINDS: REQUEST_KINDS,
   SUGGEST_MAX: SUGGEST_MAX, SUGGEST_LEN: SUGGEST_LEN, SUGGEST_KINDS: SUGGEST_KINDS,
+  IDENTITY_FIELDS: IDENTITY_FIELDS, IDENTITY_LEN: IDENTITY_LEN,
   CONTEXT_TIERS: CONTEXT_TIERS, CONTEXT_ORDER: CONTEXT_ORDER,
   assertContract: assertContract, assertContextOrder: assertContextOrder
 };

@@ -80,6 +80,7 @@ function cfgMax(c) { return (c && c.sample && c.sample.maxTokens) || (c && c.llm
 // 五档实测（3 个硬回合，真模型）：none 省 68% 钱/快 3.7 倍，但"引擎落库的变更"从 8/4/2 掉到 6/1/2 且偶发校验打回；
 // medium 比原始行为还便宜 14% 且校验打回 0 次。'minimal' 反而更贵（26→175），'low' 钱没省质量最差。
 let REASON_UNSUPPORTED = false;
+let JSON_UNSUPPORTED = false;   // v3.4：模型不支持 response_format json_object（实测 400），报过一次就不再发
 let LAST_FINISH = '';   // v1.78：上一次调用的 finish_reason（续写要用它判断「是写完了还是被截断」）
 function reasonParam(c, override) {
   if (REASON_UNSUPPORTED) return undefined;
@@ -130,7 +131,14 @@ function statMarkCallDone(ms, usage, finishReason) {
   }
 }
 
-async function llmOnce(cfg, messages, mt, onDelta, reason) {
+/* ★ v3.4：**要不要 JSON 必须是显式参数**。
+   原来这里对**所有**调用无条件加 response_format json_object —— 包括第 278 行那个
+   "v1.70 纯文本调用：只要正文，不要 JSON"的 llmText。意图写在 llmText 的注释里，
+   却被这一行压掉：分析步骤于是跑在 JSON 模式下（DeepSeek 还要求提示词里必须出现 "json"，
+   analyzeSystem 里的「不要输出 JSON」恰好满足了它 —— 靠巧合过关）。
+   实测后果：同样的 analyzeSystem，在 JSON 模式下返回 **184 个空白字符**（等于什么都没写）。
+   noJson=true 走纯文本，正是 llmText 注释里说的那条路。 */
+async function llmOnce(cfg, messages, mt, onDelta, reason, noJson) {
   const maxTokens = mt !== undefined ? mt : cfgMax(cfg);
   const stream = (typeof onDelta === 'function');
   let url = cfg.llm.baseURL || '';
@@ -140,14 +148,18 @@ async function llmOnce(cfg, messages, mt, onDelta, reason) {
   const timer = setTimeout(() => ctrl.abort(), cfg.llm.timeoutMs || 900000);   // v1.44：旧默认 90s 对大卡必超时（实测：21.7万字的卡扫描被掐断，静默退回本地猜）
   const t0 = Date.now();
   try {
+    /* JSON 模式：① 纯文本调用（llmText）不要；② 模型明确报过不支持就永久别再加
+       （与下面 REASON_UNSUPPORTED 同一条思路 —— 否则每次重试都撞同一个 400，最后静默落兜底）。 */
+    const RF = () => ((noJson || JSON_UNSUPPORTED) ? {} : { response_format: { type: 'json_object' } });
     const res = await fetch(url, {
       method: 'POST', signal: ctrl.signal,
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.llm.apiKey },
       body: JSON.stringify(stream
-        ? { model: cfg.llm.model, messages, stream: true, temperature: (cfg.llm.temperature !== undefined ? cfg.llm.temperature : 0.8), top_p: (cfg.llm.topP !== undefined ? cfg.llm.topP : 0.95), reasoning_effort: reasonParam(cfg, reason), presence_penalty: (cfg.llm.presence !== undefined ? cfg.llm.presence : 0), frequency_penalty: (cfg.llm.frequency !== undefined ? cfg.llm.frequency : 0), max_tokens: maxTokens, response_format: { type: 'json_object' } }
-        : { model: cfg.llm.model, messages, temperature: (cfg.llm.temperature !== undefined ? cfg.llm.temperature : 0.8), top_p: (cfg.llm.topP !== undefined ? cfg.llm.topP : 0.95), reasoning_effort: reasonParam(cfg, reason), presence_penalty: (cfg.llm.presence !== undefined ? cfg.llm.presence : 0), frequency_penalty: (cfg.llm.frequency !== undefined ? cfg.llm.frequency : 0), max_tokens: maxTokens, response_format: { type: 'json_object' } })
+        ? { model: cfg.llm.model, messages, stream: true, temperature: (cfg.llm.temperature !== undefined ? cfg.llm.temperature : 0.8), top_p: (cfg.llm.topP !== undefined ? cfg.llm.topP : 0.95), reasoning_effort: reasonParam(cfg, reason), presence_penalty: (cfg.llm.presence !== undefined ? cfg.llm.presence : 0), frequency_penalty: (cfg.llm.frequency !== undefined ? cfg.llm.frequency : 0), max_tokens: maxTokens, ...RF() }
+        : { model: cfg.llm.model, messages, temperature: (cfg.llm.temperature !== undefined ? cfg.llm.temperature : 0.8), top_p: (cfg.llm.topP !== undefined ? cfg.llm.topP : 0.95), reasoning_effort: reasonParam(cfg, reason), presence_penalty: (cfg.llm.presence !== undefined ? cfg.llm.presence : 0), frequency_penalty: (cfg.llm.frequency !== undefined ? cfg.llm.frequency : 0), max_tokens: maxTokens, ...RF() })
     });
-    if (!res.ok) { const t = await res.text(); if (res.status === 400 && /reasoning/i.test(t)) REASON_UNSUPPORTED = true; throw new Error('LLM HTTP ' + res.status + ' ' + t.slice(0, 300)); }
+    if (!res.ok) { const t = await res.text(); if (res.status === 400 && /reasoning/i.test(t)) REASON_UNSUPPORTED = true;
+      if (res.status === 400 && /json_object|response_format/i.test(t)) JSON_UNSUPPORTED = true; throw new Error('LLM HTTP ' + res.status + ' ' + t.slice(0, 300)); }
     if (stream) {
       let content = '', usage = null, finish = '';
       const reader = res.body.getReader();
@@ -216,14 +228,14 @@ function looksDegenerate(s) {
   // 这个 24 字的小尾巴反复出现、且覆盖了全文 ≥15% —— 正常文本不会这样（JSON 里的重复结构也不会这么密）
   return n >= 5 && (n * probe.length) / t.length >= 0.15;
 }
-async function llmOnceFull(cfg, messages, mt, onDelta, reason, maxCont) {
+async function llmOnceFull(cfg, messages, mt, onDelta, reason, maxCont, noJson) {
   const cap = Math.max(0, Number(maxCont == null ? 4 : maxCont));
   let acc = '';
   for (let i = 0; i <= cap; i++) {
     const part = await llmOnce(cfg, i === 0 ? messages : messages.concat([
       { role: 'assistant', content: acc },
       { role: 'user', content: '你上一条输出被长度上限截断了。**从断掉的地方接着写**：不要重复已经写过的内容、不要重新开头、不要解释，直接续上。' }
-    ]), mt, onDelta, reason);
+    ]), mt, onDelta, reason, noJson);
     if (!part) break;
     if (i > 0 && looksLikeRepeat(acc, part)) { console.error('[llm] 续写检测到重复，停止续写（不空转）'); break; }
     acc += part;
@@ -276,7 +288,7 @@ function stripJson(raw) {
 /* v1.70 纯文本调用：只要正文，不要 JSON。
    给扫描的**第一步（分析）**用 —— 分析要的是"一路推下去"，逼它输出 JSON 会让它跳过长推理。 */
 async function llmText(cfg, messages, mt, onDelta) {
-  const raw = await llmOnceFull(cfg, messages, mt, onDelta, 'high');   // v1.77 接 onDelta；v1.78 截断自动续写
+  const raw = await llmOnceFull(cfg, messages, mt, onDelta, 'high', undefined, true);   // v1.77 接 onDelta；v1.78 截断自动续写；v3.4 末尾 true = **纯文本，不要 JSON 模式**
   return stripThink(String(raw == null ? '' : raw));
 }
 /* v2.09：兜底必须**可识别**。
@@ -399,6 +411,18 @@ function SYSTEM(data, cfg2, noCharter) {
        也不知道不写会按类型缺省判。措辞必须保留「事件烈度上限」这五个字（switches 的开关穿透检查读它）。 */
     '【世界】' + (data.meta.era || '现代') + '；事件烈度上限 ' + (data.meta.maxSeverity || 'L2') + '（烈度取值 L1 日常 / L2 要紧 / L3 重大 / L4 灾难；L5 是禁止级，不存在。不写就按类型缺省判，事件类缺省 L2）；重大事件必须有前兆与因果，禁止凭空发生。',
     '【世界规则】' + ((data.meta.rules || []).slice(0, 8).join('；') || '（无特殊规则）') + '。玩家与其设定若与规则冲突，一律以世界规则为准——世界可以拒绝玩家，不要为玩家圆场。卡设定世界的运行逻辑可能不符合现实（年龄/法律/常识）：以世界自身规则为准，不用现实社会逻辑去纠偏或预言后果。',
+    /* ★ v3.4 · 卡的身份证（data.meta.identity）：**这出戏是围绕什么打的**。
+       位置紧挨【世界】/【世界规则】—— 三行合起来就是这个世界的"单一规则表"。
+       放 **system** 而不是资料包：它**不随回合变**，放 system 才吃得到前缀缓存
+       （context-cache-check 正守着这条：不变的东西放前面，端上实测缓存率 29% → 现在这条不能被破坏）。
+       同一行里必须把边界写死：不写，它就会退化成剧情大纲 = 任务系统（违宪）。
+       老存档没有这个键 → 整行不出现（不是空行、不是占位串）。 */
+    ...((data.meta.identity && data.meta.identity['戏']) ? [
+      '【这出戏】这张卡是围绕什么打的（**定调，不是剧情大纲**）：题材：' + data.meta.identity['题材']
+      + '；戏：' + data.meta.identity['戏'] + '；调性：' + data.meta.identity['调性']
+      + '；不是什么：' + data.meta.identity['不是什么'] + '。'
+      + '用法：它**不规定下一步该演什么**；当两条路都合理时，选更贴这里的那条。玩家自己跑题出去，就跟着他走 —— 它是倾向，不是枷锁。'
+    ] : []),
     '【叙事原则】行为级自由（语气/表情/小动作/情绪波动自由发挥）；事实级严格（位置/生死/关系大变化必须走 Update 且带因果）。',
     '【充分演绎 · 一行输入=一场戏】玩家通常只打一行字（信息量少）。你要把它当作一粒石子，把涟漪推完：',
     '① 即时反应：对方怎么接住这句话（动作/神态/一句回话）；② 涟漪：环境与第三方（收音机/雨/在场其他人怎么看在眼里）；③ 结果：这件事让什么变了、什么仍旧；④ 收束：把这一场戏停在自然的静场点（不是悬念钩子）。',
