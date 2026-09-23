@@ -301,8 +301,14 @@ async function renderStart() {
     $('#app').classList.add('hidden');
     $('#start').classList.remove('hidden');
     __galleryReady = false;                     // 回主菜单：下次进世界重新拉图库（可能换了世界）
-    const m = $('#start-menu'); m.innerHTML = '';
-    const side = $('#start-side'); side.innerHTML = '';
+    /* ★ v2.13 修（用户报「返回主菜单 → 菜单渲染出错：Cannot set properties of null (setting 'innerHTML')」）：
+       #start-menu / #start-side 在实际运行时**可能已经不在 DOM 里**（跑完一局回主菜单时就会），
+       而这两行没有守卫 → 直接抛。
+       同一个文件在下面（把右栏搬进「更多」那一段）**是守了的**（if (sideEl) ...）——
+       就是这一处漏了。和 board.js 里 world 有守卫、now 没有，是同一种不对称。 */
+    const m = $('#start-menu'); if (!m) return;
+    m.innerHTML = '';
+    const side = $('#start-side'); if (side) side.innerHTML = '';
     let st = {};
     try { st = await api('/api/state'); } catch (e) { __deg("app.js", e); }
     const cfgS = (st && st.config) || {};

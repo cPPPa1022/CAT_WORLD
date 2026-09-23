@@ -1,0 +1,21 @@
+v2.13-d：修「返回主菜单 → 菜单渲染出错」
+
+用户报：返回主菜单时弹
+  「菜单渲染出错：Cannot set properties of null (setting innerHTML)」
+
+定位（app.js:304-305）：
+  const m = $(#start-menu);  m.innerHTML = "";        ← 没守卫
+  const side = $(#start-side); side.innerHTML = "";   ← 没守卫 ★
+而同一个文件在 417-418 行是守了的（const sideEl = $(#start-side); if (sideEl) ...）——
+就是这一处漏了。跑完一局回主菜单时 #start-side 已经不在 DOM 里 → 直接抛 → 冒到 424 行。
+
+修：m 不存在就直接 return；side 存在才清空。
+
+★ 已用 git 确认：**这两行在我动手之前就是这样**（首个提交 9ee895a 逐字一致）—— 不是本次改动引入的。
+
+同一种不对称在本项目里出现多次（有守卫 / 没守卫）：
+  · board.js: now 没有守卫（world 有）—— 但 board.js:189 有 if(!layout||!now) return，实际是安全的
+  · app.js:305: #start-side 没有守卫（417 行有）—— 就是这个 bug
+这类"同一个东西，一处守了一处没守"是本项目最稳定的一类缺陷来源。
+
+验收：app.js 语法 OK · dist-check 9/0

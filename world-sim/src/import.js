@@ -926,9 +926,24 @@ function packToData(pack, opts) {
        （认知门控判定"只见过一面"，名字也被挡）→ 点人物全不认识。
        现在：词表已写进 schema；这里再兜一层 —— **AI 明确说了有关系，就不该算"陌生人"**。 */
     const stageOf = stageFromBond(bondOf, n.rel);
-    const seenTxt = (app && !/原设|待发现/.test(String(app))) ? ('你注意到：' + String(app).slice(0, 30)) : ('你注意到：' + String(n.surface || n.name || '一个陌生面孔').slice(0, 24) + '的身影');
+    /* ★ v2.13：两处修（用户实测「靠山屯」那局，开场一次糊了 21 条外貌串）——
+       ① 原来把**生图锚点（九维外貌）**当成 action beat 推上屏：
+          「（方脸，寸头，浓眉；鼻梁宽，嘴唇厚；皮肤黑红，有晒斑；体型壮实，肚子微凸；身高比村）」
+          —— 全是被截断的数据库字段，而且全是**玩家还没见过的人**。
+          外貌本来就存在 entities 里、NPC 登场时自然会用到，**不需要开局对玩家播一遍**。
+       ② seen（玩家对这个人的**视觉印象**）原来也直接塞九维串的前 30 字，
+          而它会被当作**称谓兜底**的原料 → 屏幕上出现「一个你注意到：圆脸，双下巴；羊角辫，红头绳；的人」。
+          现在只取九维里**最像人能记住的那一段**（衣着/举止通常在后半），并限到 24 字。 */
+    const seenTxt = (function () {
+      const raw = String(app || "").replace(/[（(][^）)]*[）)]/g, "").trim();
+      if (raw && !/原设|待发现/.test(raw)) {
+        const seg = raw.split(/[；;]/).map(function (x) { return String(x).trim(); }).filter(Boolean);
+        const pick = seg.slice(-2).join("、").slice(0, 24);   // 后半 = 衣着/举止：人记得住的是这些
+        if (pick) return pick;
+      }
+      return String(n.surface || n.name || "一个陌生面孔").slice(0, 24);
+    })();
     data.impressions[n.id] = { stage: (n.inScene ? stageOf : 1), seen: seenTxt, traits: [], notes: [], bonds: [bondOf === '初识' ? '还不认识' : ('已认识——' + String(n.rel || bondOf).slice(0, 20))], nameKnown: n.inScene ? n.name : null };
-    if (app) data.sceneLog.push({ t: now, type: 'action', text: '（' + String(app).slice(0, 40) + '）' });
   });
   /* v2.07：世界书条目（**原文照抄**，按 key 门控；丢弃过的条目不进书架，但要留痕给 ?dev 观察）。 */
   data.worldinfo = {};

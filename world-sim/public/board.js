@@ -192,11 +192,19 @@
     now.innerHTML = '';
     now.classList.remove('hidden');
 
+    /* ★ v2.13：**不再把上一幕藏起来。**
+       原来这里按最后一个 stage-tag 把 log 切成 act / hist，hist 收进「▸ 更早：N 拍」的折叠框 ——
+       于是屏幕上永远只有一幕，玩家只能靠猜（用户实测：「我说出去，但我并不知道我没出去」）。
+       改成**连续流**：所有幕都渲染，**越早越暗**（渐隐，不是隐藏）。
+       历史都在（往上滚就能读，像酒馆），主次也在（只有当前幕最亮，仍然不用卡片底色）。 */
     const log = (V && V.sceneLog) || [];
-    let cur = -1;
-    for (let i = 0; i < log.length; i++) if (log[i].type === 'stage-tag') cur = i;
-    const act = cur >= 0 ? log.slice(cur) : log;
-    const hist = cur > 0 ? log.slice(0, cur) : [];
+    const marks = [];
+    for (let i = 0; i < log.length; i++) if (log[i].type === 'stage-tag') marks.push(i);
+    const spans = [];
+    for (let k = 0; k < marks.length; k++) spans.push(log.slice(marks[k], (k + 1 < marks.length) ? marks[k + 1] : log.length));
+    if (marks.length && marks[0] > 0) spans.unshift(log.slice(0, marks[0]));   // 第一个场次标签之前（开场旁白）
+    const cur = spans.length - 1;
+    const act = spans[cur] || log;
     /* 主次由 **AI** 定（V.focus = 引擎校验过的 id 列表，见 src/ai.js 的 focus 定义）：
        AI 给几个就几个（几个人都重要是正常的）；一个都不给 = 这一拍没有主次 ——
        界面**不许自己挑一个**（拿公式选主角，等于把叙事判断从 AI 手里抢回来）。 */
@@ -204,22 +212,23 @@
 
     const wrap = h('div', 'board');
     const b = band(); if (b) wrap.appendChild(b);
-    const f = focusArea(act, focusIds); if (f) wrap.appendChild(f);
-    const a = ambientArea(act, focusIds); if (a) wrap.appendChild(a);
-
-    if (hist.length) {
-      const fold = h('div', 'bfold');
-      const btn = h('button', 'bfold-btn', '▸ 更早：' + hist.length + ' 拍');
-      const box = h('div', 'bfold-box hidden');
-      for (const bb of hist) { const t = compact(bb); if (t) box.appendChild(h('div', 'bfl', t)); }
-      btn.onclick = () => {
-        const hid = box.classList.toggle('hidden');
-        btn.textContent = (hid ? '▸ 更早：' : '▾ 更早：') + hist.length + ' 拍';
-      };
-      fold.appendChild(btn); fold.appendChild(box);
-      wrap.appendChild(fold);
+    /* 连续流：从最早到最新，**一幕都不藏**。
+       当前幕 = 焦点区 + 氛围区（最亮）；更早的幕 = 压缩成行，**越早越淡**（渐隐 = "远"，不是"藏"）。 */
+    const atBottom = (now.scrollTop + now.clientHeight) >= (now.scrollHeight - 24);
+    for (let s = 0; s < spans.length; s++) {
+      if (s === cur) {
+        const f = focusArea(act, focusIds); if (f) wrap.appendChild(f);
+        const a = ambientArea(act, focusIds); if (a) wrap.appendChild(a);
+      } else {
+        const box = h('div', 'bolder');
+        box.style.opacity = String(Math.max(0.28, 1 - (cur - s) * 0.17));
+        for (const bb of spans[s]) { const t = compact(bb); if (t) box.appendChild(h('div', 'bfl', t)); }
+        wrap.appendChild(box);
+      }
     }
     now.appendChild(wrap);
+    /* 只在"本来就在底部"时跟到底 —— 你往上翻历史的时候，不许被拽下来 */
+    try { if (atBottom) now.scrollTop = now.scrollHeight; } catch (e) {}
   }
 
   window.renderStage = renderBoard;
