@@ -14,19 +14,20 @@ let pass = 0, fail = 0;
 const ok = (c, n, x) => { if (c) { pass++; console.log('  PASS  ' + n); } else { fail++; console.log('  FAIL  ' + n + (x ? '  << ' + x : '')); } };
 const mk = () => { const d = JSON.parse(JSON.stringify(W.buildDemoWorld())); d.id = (p) => p + '__f' + Math.random().toString(36).slice(2, 7); d.current.turnN = 1; return d; };
 
-// ---------- [1] 档位：世界能长到哪一层 ----------
-console.log('\n[1] 框架档位 0/1/2/3');
+// ---------- [1] 世界会长：词 / 型 / 律（v2.08 起没有档位，能力永远全开） ----------
+console.log('\n[1] 世界会长 —— 词/型/律 都永远可长');
 (function () {
-  const d0 = mk(); FW.ensure(d0, 0); FW.setLevel(d0, 0);
-  ok(!FW.learnDocKind(d0, '玉牒') && FW.vocabView(d0).docKinds.length === 0, '档 0：什么都不长（连词都不记）');
-  const d1 = mk(); FW.ensure(d1, 1);
-  ok(FW.vocabView(d1).docKinds.indexOf('玉牒') < 0 && FW.learnDocKind(d1, '玉牒') && FW.vocabView(d1).docKinds.indexOf('玉牒') >= 0, '档 1：词会长（文书类型）');
-  ok(FW.checkProposal(d1, { slot: 'type', name: '门派', fields: ['山门', '掌门'] }).ok === false, '档 1：**型**长不了（被引擎拦）');
-  const d2 = mk(); FW.ensure(d2, 2);
-  ok(FW.checkProposal(d2, { slot: 'type', name: '门派', fields: ['山门', '掌门', '戒律'] }).ok === true, '档 2：型可以长（门派有栏位）');
-  ok(FW.checkProposal(d2, { slot: 'rule', name: '灵根', form: 'enum', items: ['金'] }).ok === false, '档 2：**律**还长不了');
-  const d3 = mk(); FW.ensure(d3, 3);
-  ok(FW.checkProposal(d3, { slot: 'rule', name: '灵根', form: 'enum', items: ['金', '木', '水'] }).ok === true, '档 3：律可以长');
+  const d = mk(); FW.ensure(d);
+  ok(FW.learnDocKind(d, '玉牒') && FW.vocabView(d).docKinds.indexOf('玉牒') >= 0, '词会长（文书类型）');
+  ok(FW.checkProposal(d, { slot: 'org', name: '巡夜司' }).ok === true, '机构可以长');
+  ok(FW.checkProposal(d, { slot: 'type', name: '门派', fields: ['山门', '掌门', '戒律'] }).ok === true, '型可以长（门派有栏位）');
+  ok(FW.checkProposal(d, { slot: 'rule', name: '灵根', form: 'enum', items: ['金', '木', '水'] }).ok === true, '律可以长');
+  /* ★ 老存档里可能还留着 framework.level —— 读到时必须**忽略**：不报错、也不因此关掉能力。
+     这条是"删档位不许删出兼容事故"的守门人。 */
+  const old = mk();
+  old.framework = { v: 1, level: 0, vocab: { docKinds: [], fxNames: {}, orgs: [], roles: [] }, types: [], rules: [], log: [] };
+  ok(FW.checkProposal(old, { slot: 'rule', name: '灵根', form: 'enum', items: ['金'] }).ok === true, '★ 老档里的 level:0 被忽略，能力照常全开');
+  ok(FW.ensure(mk()).level === undefined && !('setLevel' in FW), '★ 框架里不再有 level / setLevel（权限日志不会再被签上 by:player）');
 })();
 
 // ---------- [2] 律：只有事实，没有算盘 ----------
@@ -62,14 +63,19 @@ console.log('\n[3] 演出名 → 只写名字就行');
 // ---------- [4] 提案闸门 ----------
 console.log('\n[4] AI 只能提议，引擎提交');
 (function () {
-  const d = mk(); FW.ensure(d, 2);
+  const d = mk(); FW.ensure(d);
   const before = JSON.stringify(FW.vocabView(d));
   FW.canPropose(d, { slot: 'type', name: '门派', fields: ['山门'] });
   ok(JSON.stringify(FW.vocabView(d)) === before, '★ canPropose 是**纯校验**（校验器不该有副作用）');
   ok(!FW.canPropose(d, { slot: 'city', name: 'x' }).ok, 'slot 白名单外的提案被拒');
   const r = FW.applyProposal(d, { slot: 'type', name: '门派', fields: ['山门', '掌门'] });
   ok(r.ok && FW.vocabView(d).types.some(t => t.name === '门派'), 'applyProposal 提交后才真的落库');
-  ok(!RT.validateUpdates(d, [{ type: '框架', slot: 'rule', name: '灵根', form: 'enum', items: ['金'] }], {}, {}).allowed.length, '档 2 时「律」提案过不了校验器');
+  /* v2.08：档位没了，这条改成守**真正还在的边界** —— 律的形式。
+     （原来它守的是"档 2 不许长律"，那道门已经不存在了。） */
+  ok(RT.validateUpdates(d, [{ type: '框架', slot: 'rule', name: '灵根', form: 'enum', items: ['金'] }], {}, {}).allowed.length === 1,
+    '律提案（合法形式）能过校验器 —— 无档位，永远允许');
+  ok(!RT.validateUpdates(d, [{ type: '框架', slot: 'rule', name: '速度', form: 'x3' }], {}, {}).allowed.length,
+    '★ 但"算盘"照样被校验器拦（律只允许 enum/bool/range）');
 })();
 
 // ---------- [5] 生成清单 ----------
@@ -87,7 +93,7 @@ console.log('\n[5] 生成清单（截至这份存档为止，新生成过什么�
   MF.record(d, { kind: '人物', id: 'npc9', name: '某人', schema: 'ent.person.v1', by: 'ai', note: 'x' });
   ok(MF.view(d).n === before + 1, '只追加（不覆盖历史）');
   const rd = MF.readmeSkeleton(d);
-  ok(/框架档位/.test(rd) && /生成清单/.test(rd) && /一封帖子/.test(rd) === false, '自述骨架含事实（档位/清单统计），不含逐条清单', rd.slice(0, 40));
+  ok(/世界自己长出来的/.test(rd) && /生成清单/.test(rd) && /一封帖子/.test(rd) === false, '自述骨架含事实（长出了什么/清单统计），不含逐条清单', rd.slice(0, 40));
 })();
 
 // ---------- [6] 提示词与资料包 ----------
@@ -110,11 +116,11 @@ console.log('\n[6] AI 侧能看到什么');
 // ---------- [7] 框架住在存档里（往返） ----------
 console.log('\n[7] 跟存档一起走');
 (function () {
-  const d = mk(); FW.ensure(d, 2); MF.ensure(d);
+  const d = mk(); FW.ensure(d); MF.ensure(d);
   FW.learnDocKind(d, '玉牒'); FW.learnFxName(d, '剑光', [{ k: 'flash' }]); FW.learnType(d, '门派', ['山门']);
   MF.record(d, { kind: '文档', name: 'x', schema: 'fw.doc.v1', by: 'ai', note: 'y' });
   const round = JSON.parse(JSON.stringify(d));            // 存档 = JSON 往返
-  ok(round.framework && round.framework.level === 2, '★ 往返后**档位还在**（跟着存档走）');
+  ok(round.framework && round.framework.types.length === 1 && round.framework.vocab.docKinds.indexOf('玉牒') >= 0, '★ 往返后**世界长出来的东西还在**（跟着存档走）');
   ok(FW.resolveFx(round, '剑光') !== null, '往返后演出名还解得出来');
   ok(MF.view(round).n === 1, '往返后生成清单还在');
   ok(round.framework.log.length >= 3 && round.framework.log.every(x => x.what && x.t !== undefined), '演化日志（世界什么时候长出了什么）留痕');

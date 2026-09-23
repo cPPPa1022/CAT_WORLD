@@ -168,7 +168,7 @@ async function genOrg(data, cfg, req) {
     knownOrgs: inSight ? [id] : [],
     ledger: inSight ? [{ type: '信息到达', target: 'player', desc: '你听说了「' + name + '」', cause: '就在眼前' }] : [],
     side: [
-      { do: 'learnWord', group: 'orgs', name: name },     // 框架"词"：档位≥1 才记
+      { do: 'learnWord', group: 'orgs', name: name },     // 框架"词"：世界自己长出来的机构名（v2.08 起无档位，永远可记）
       { do: 'manifest', rec: { kind: '组织', id: id, name: name, schema: 'ent.org.v1', by: 'ai', note: String(role || req.need || '').slice(0, 60) } }
     ]
   }], { t: data.current.time });

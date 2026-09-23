@@ -31,7 +31,7 @@ console.log('\n[1] 导出包：自带一切');
   ok(!!p.world && !!p.world.entities, '有 world（世界数据）');
   ok(!!p.card, '来源卡跟着走（不带的话导入后卡盒里没有这张卡 → 卡里的世界书/开场就断了）');
   ok(typeof p.readme === 'string' && /存档自述/.test(p.readme), '带一份**自述**（引擎拼的事实骨架）');
-  ok(p.__save.frameworkLevel !== undefined && p.__save.manifestN !== undefined, '档位与清单条数写进包头（导入前不用解析整个世界）');
+  ok(p.__save.manifestN !== undefined && p.__save.frameworkLevel === undefined, '清单条数写进包头；★ v2.08 起包头不再有档位（删干净了）');
 })();
 
 // ---------- [2] 干净包：直接可用 ----------
@@ -74,11 +74,13 @@ console.log('\n[4] 版本与坏包');
   ok(r.ok && r.newer, '★ 来自更新版本的存档：**能导入**，但明确告诉玩家"新东西本机不认识"', JSON.stringify({ ok: r.ok, newer: r.newer }));
   ok(SP.scan({ nope: 1 }).ok === false, '不是存档文件 → 拒绝并说明');
   ok(SP.scan({ __save: {}, world: { current: {} } }).ok === false, '世界数据不完整 → 拒绝并说明（缺 entities）');
+  /* v2.08：档位越界那条自动修没了（档位本身没了）。改守真正的兼容风险：
+     老档里带着 level:9 也必须能干净导入 —— 不许报错、不许被当成"不认识的东西"装箱。 */
   const p2 = SP.pack(mk(), {});
   p2.world.framework.level = 9;
   const r2 = SP.scan(p2);
-  ok(r2.autoFixed.some(s => /夹到 3/.test(s)), '档位越界 → 列为"会自动处理"');
-  ok(SP.install(p2).world.framework.level === 3, '导入时真的夹到 3（引擎自动修，0 token）');
+  ok(r2.ok && !(r2.unknown || []).some(x => /档位/.test(String(x.what || ''))), '★ 老档带 framework.level:9 也能通过扫描（被忽略，不进 unknown 箱）');
+  ok(SP.install(p2).ok, '★ 老档带 level 照样能装进来');
 })();
 
 // ---------- [5] 老档 / 手工包 ----------
@@ -116,7 +118,7 @@ console.log('\n[7] 自述（SAVE.md）');
 (function () {
   const p = SP.pack(dirty(), {});
   const rd = p.readme;
-  ok(/框架档位：3/.test(rd), '写着档位');
+  ok(/世界自己长出来的：/.test(rd), '写着世界长出了什么');
   ok(/生成清单：共 2 条/.test(rd), '写着清单条数');
   ok(/剑光出鞘/.test(rd) && /灵根/.test(rd), '写着这个世界长出来的词/律');
   ok(/插件/.test(rd) === false, '逐条清单不进自述（自述是给人看的摘要，详细在 manifest 里）', rd.slice(0, 60));

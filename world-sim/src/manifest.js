@@ -65,7 +65,10 @@ function readmeSkeleton(data, extra) {
   L.push('');
   L.push('- 时代：' + ((data.meta && data.meta.era) || '未知'));
   L.push('- 世界时间：' + ((data.current && data.current.time) || '') + '（第 ' + ((data.current && data.current.turnN) || 0) + ' 回合）');
-  L.push('- 框架档位：' + (f ? f.level : 1) + '（0 关闭 / 1 词 / 2 词+型 / 3 词+型+律）');
+  /* v2.08：档位没了。这一行改成**说清世界长出了什么**（那才是读档的人真正要知道的）。 */
+  if (f) L.push('- 世界自己长出来的：' + ((f.vocab && (f.vocab.docKinds || []).length) || 0) + ' 个可读文本类型、'
+    + Object.keys((f.vocab && f.vocab.fxNames) || {}).length + ' 个演出名、'
+    + (f.types || []).length + ' 个型、' + (f.rules || []).length + ' 条律');
   L.push('- 生成清单：共 ' + m.items.length + ' 条');
   const byCount = {};
   for (const it of m.items) byCount[it.by] = (byCount[it.by] || 0) + 1;

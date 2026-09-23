@@ -671,7 +671,7 @@ function applyUpdates(data, updates, nowIso) {
         try { MF.record(data, { kind: '演出', id: u.fxKey, name: u.fx, schema: 'fw.fx.v1', by: 'ai', note: u.note || '' }); } catch (e) { DEG.hit("game.js", e); }
         applied++;
       } else if (u.type === '框架') {
-        // AI 提议给世界长词/型/律 → 引擎按档位校验后提交（ESAA）
+        // AI 提议给世界长词/型/律 → 引擎按 mod 边界校验后提交（ESAA；v2.08 起无档位）
         const c = FW.applyProposal(data, u);
         if (c && c.ok) {
           try { MF.record(data, { kind: '框架', id: c.slot, name: c.name, schema: 'fw.' + c.slot + '.v1', by: 'ai', note: u.note || u.why || '' }); } catch (e) { DEG.hit("game.js", e); }

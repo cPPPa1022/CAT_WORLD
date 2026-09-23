@@ -86,14 +86,14 @@ ok(String(((d7.entities.npc2 || {}).contact || {}).kind || '') === 'none', 'none
 ok(String(((d7.entities.npc1 || {}).contact || {}).label || '') === '铺子柜台那台', '标签保留（铺子柜台那台）');
 ok(!d7.entities.npc9, '名单外的人没有被凭空造出来');
 
-/* ⑦ 档位：开局编译按 3 档起草，但提交仍受框架档位约束 */
+/* ⑦ 开局编译的框架提案（v2.08：没有档位了，能力永远全开）
+   守两件事：① 开局编译能长东西；② **引擎不再偷改权限**（原来它会 setLevel 两次，还记 by:'player'）。 */
 const d6 = mk();
-FW.setLevel(d6, 0);
 const low = FW.applyProposal(d6, { slot: 'rule', name: '灵力五等', form: 'enum', items: ['一', '二'], why: '开局编译' });
-ok(low && low.ok === false, '档位 0 时，律被框架拒绝（' + ((low && low.err) || '') + '）');
-FW.setLevel(d6, 3);
-const high = FW.applyProposal(d6, { slot: 'rule', name: '镇上认印不认人', form: 'bool', why: '开局编译' });
-ok(high && high.ok === true, '档位 3 时，律被接受');
+ok(low && low.ok === true, '开局编译可以长律（无档位，永远允许）');
+const bogus = FW.applyProposal(d6, { slot: 'rule', name: '速度', form: 'x3', why: '开局编译' });
+ok(bogus && bogus.ok === false, '★ 但"算盘"照样被拒（律只允许 enum/bool/range）');
+ok(!('setLevel' in FW) && !('level' in FW), '★ 框架不再导出 setLevel/level —— 权限日志不会再出现假的 by:player');
 
 console.log('');
 console.log('==== ' + pass + ' passed, ' + fail + ' failed ====');

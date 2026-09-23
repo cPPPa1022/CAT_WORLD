@@ -44,7 +44,7 @@ function catalog(data) {
     ['你亲历', (data.experience || []).length + ' 条原文 + ' + Object.keys(data.dayDigest || {}).length + ' 天摘要'],
     ['消息', (data.messages || []).length + ' 条'],
     ['新闻', (data.news || []).length + ' 条'],
-    ['框架', (data.framework ? ('档位 ' + data.framework.level) : '未建立')],
+    ['框架', (data.framework ? ((data.framework.vocab && (data.framework.vocab.docKinds || []).length) || 0) + ' 个词 · ' + ((data.framework.types || []).length) + ' 个型 · ' + ((data.framework.rules || []).length) + ' 条律' : '未建立')],
     ['不认识的东西', (data.unknown || []).length + ' 块']
   ];
   // 负面清单：这个世界**不会有什么**（B2：1900 不会有智能手机）
@@ -156,8 +156,7 @@ function one(data, q) {
   if (w === 'framework') {
     const f = data.framework || {};
     const v = f.vocab || {};
-    const body = ['档位：' + (f.level === undefined ? 1 : f.level),
-      '可读文本类型：' + ((v.docKinds || []).join('、') || '（无）'),
+    const body = ['可读文本类型：' + ((v.docKinds || []).join('、') || '（无）'),
       '演出名：' + (Object.keys(v.fxNames || {}).map(k => k + '(' + v.fxNames[k].sig + ')').join('、') || '（无）'),
       '型：' + ((f.types || []).map(t => t.name + '(' + (t.fields || []).join('/') + ')').join('；') || '（无）'),
       '律：' + ((f.rules || []).map(r => r.name + '=' + (r.items || []).join('|') + (r.frozen ? '(已冻结)' : '')).join('；') || '（无）'),

@@ -22,7 +22,8 @@ const DEG = require('./degraded');
 const BUS = require('./bus');
 const FW = require('./framework');
 
-const OPENING_TIER = 3;                 // 用户定的默认：开局编译按 3 档起草
+/* v2.08 删：OPENING_TIER 常量随之移除 —— 档位没了，开局编译和其他时候一样能力全开，
+   不再需要"临时提到 3 档、完了还原"（那两次 setLevel 就是权限日志说谎的来源）。 */
 const TIMEOUT_MS = 25000;               // 超时就退回确定性兜底，不让玩家卡在门口
 
 function done(data) { return !!(data && data.meta && data.meta.openingAt); }
@@ -56,7 +57,6 @@ function packet(data) {
   for (const s of slots) if (!pick(s[1])) empty.push(s[0]);
   return {
     世界: { 名称: (data.meta || {}).name, 时代: (data.meta || {}).era, 科技线: (data.meta || {}).carries, 货币: (data.meta || {}).currency, 烈度上限: (data.meta || {}).maxSeverity },
-    框架档位: OPENING_TIER,
     玩家: {
       名字: pl.name, 年龄: (pr.identity || {}).年龄, 身份: pick((pr.identity || {}).身份), 职业: pick((pr.identity || {}).职业),
       来历: pick((pr.background || {}).经历), 样貌: pick((pr.appearance || {}).标志物), 性格: pick((pr.surface || {}).待人),
@@ -161,8 +161,6 @@ async function compile(data, cfg, opts) {
     mark(data, 'fallback', '未接入模型：只做了确定性兜底（关系→认识）');
     return { ok: false, why: 'no_ai', applied: us.length };
   }
-  const lv0 = FW.level(data, 1);
-  FW.setLevel(data, OPENING_TIER);       // 这一趟按 3 档起草（用户定的默认）；提交完恢复玩家自己的档位
   let out = null, err = '';
   try {
     const r = await Promise.race([
@@ -188,8 +186,7 @@ async function compile(data, cfg, opts) {
     mark(data, 'ai', '开局编译：' + applied + ' 条落库' + (dropped ? '，' + dropped + ' 条被校验器拒' : ''));
   }
   try { if (out && out.selfcheck) data.current.openingSelfcheck = out.selfcheck; } catch (e) { DEG.hit('opening.js', e); }
-  FW.setLevel(data, lv0);                // 档位是玩家的设置，AI 不许改
   return { ok: !!applied, applied: applied, dropped: dropped, why: err || null, selfcheck: (out && out.selfcheck) || null };
 }
 
-module.exports = { compile, toUpdates, fallback, packet, systemPrompt, done, mark, OPENING_TIER };
+module.exports = { compile, toUpdates, fallback, packet, systemPrompt, done, mark };

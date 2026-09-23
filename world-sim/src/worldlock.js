@@ -75,7 +75,7 @@ const REQUIRED = [
   // —— B 组：同步 mutate current ——
   ['POST', '/api/settings'], ['POST', '/api/wxmark'], ['POST', '/api/player-name'],
   ['POST', '/api/world/load'], ['POST', '/api/world/del'], ['POST', '/api/reset'],
-  ['POST', '/api/msg/read'], ['POST', '/api/schema/register'], ['POST', '/api/framework/level'],
+  ['POST', '/api/msg/read'], ['POST', '/api/schema/register'],
   ['POST', '/api/snapshot/save'], ['POST', '/api/snapshot/load'], ['POST', '/api/snapshot/stepback'],
   ['POST', '/api/doc/read'], ['POST', '/api/msg/readall'], ['POST', '/api/claim/save'],
   ['POST', '/api/worldinfo/save'], ['POST', '/api/worldinfo/del'],

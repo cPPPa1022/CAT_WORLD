@@ -68,7 +68,7 @@ console.log('世界锁：互斥 / 超时 / 覆盖面 / 前后端一致');
   const must = ['/api/turn', '/api/turn/stream', '/api/skip', '/api/msg/send', '/api/world/load', '/api/world/del',
     '/api/reset', '/api/snapshot/load', '/api/snapshot/stepback', '/api/snapshot/save', '/api/doc/read',
     '/api/claim/save', '/api/worldinfo/save', '/api/worldinfo/del', '/api/msg/read', '/api/msg/readall',
-    '/api/schema/register', '/api/framework/level', '/api/player-name', '/api/wxmark', '/api/settings',
+    '/api/schema/register', '/api/player-name', '/api/wxmark', '/api/settings',
     '/api/new', '/api/world/gen', '/api/demo', '/api/cards/launch', '/api/cards/del', '/api/save/import',
     '/api/save/repair', '/api/comfy/render', '/api/comfy/person', '/api/person/look', '/api/image/workflow', '/api/storage/clean'];
   const missing = must.filter(x => !WL.REQUIRED_MAP.has('POST ' + x));

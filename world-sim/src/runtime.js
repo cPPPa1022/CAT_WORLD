@@ -337,7 +337,7 @@ function validateUpdates(data, updates, frame, ctx) {
       u._moveMinutes = c.minutes;
     }
     if (u.type === '框架') {
-      // AI 只能**提议**给世界长词/型/律；合不合法（档位、形式、上限）由引擎说了算
+      // AI 只能**提议**给世界长词/型/律；合不合法（形式、上限、边界）由引擎说了算（v2.08 起无档位）
       const c = FW.canPropose(data, u);
       if (!c.ok) { deny(c.err); continue; }
     }

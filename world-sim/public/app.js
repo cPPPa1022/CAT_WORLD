@@ -28,7 +28,7 @@ let __galleryReady = false;   // 图库（第二个数据源）是否已针对�
 let __lastFxSeq = 0;          // 本回合演出（fx.js 词表）已播到的序号
 let __lastDocSeq = 0;         // 文书展开（文档对象）已展开到的序号
 let __expDay = '';            // v1.54「你经历过」按哪一天筛选
-const BUILD = 'v2.07';
+const BUILD = 'v2.08';
 /* v1.86：**开发者字段走 /api/dev**（世界视图 /api/state 默认不含它们）。
    为什么：原来 buildView 一份 JSON 兼作世界呈现 + 设置面板 + 诊断，任何新增字段默认就对前端可见 ——
    "开发者信息不上桌"（catworld-ui 越权红线 4）只能靠纪律守。现在默认隐藏，只在 ?dev 或设置面板里取。 */
@@ -2186,7 +2186,7 @@ function openImportSave() {
     out.innerHTML = '';
     const s = (pack && pack.__save) || {};
     out.appendChild(el('div', 'item', (s.name || '未名之地') + '（' + (s.era || '') + '）'));
-    out.appendChild(el('div', 'hint', '世界里到了 ' + fmtStamp(s.worldTime || '') + (__DEV ? ' · 第 ' + (s.turnN || 0) + ' 回合 · 框架档位 ' + (s.frameworkLevel === undefined ? 1 : s.frameworkLevel) + (s.build ? ' · 来自 ' + s.build : '') : '')));
+    out.appendChild(el('div', 'hint', '世界里到了 ' + fmtStamp(s.worldTime || '') + (__DEV ? ' · 第 ' + (s.turnN || 0) + ' 回合 · 框架档位 ' + (s.build ? ' · 来自 ' + s.build : '') : '')));
     if (rep.counts) out.appendChild(el('div', 'hint', '生成清单 ' + rep.counts.manifest + ' 条：本机认识 ' + rep.counts.known + ' 条，不认识 ' + rep.counts.unknown + ' 条'));
     for (const e of (rep.errors || [])) out.appendChild(el('div', 'bad', e));
     for (const n of (rep.notes || [])) out.appendChild(el('div', 'hint', '· ' + n));
@@ -3128,23 +3128,12 @@ async function openSettings() {
         + '偶尔一次无所谓；**频繁出现**说明模型在发散或卡带 —— 那时调大上限没用（一次正常输出也就几百到几千字，撞 384K 一定是它自己绕进去了）。'));
     }
   })();
-  /* v1.51「世界会自己长」：框架档位 0/1/2/3。
-     用户定的原则：**框架住在存档里**，所以档位存在世界里（跟着存档走），这里改的是**当前这个世界**的档。 */
+  /* v2.08：档位选择器整个删掉。
+     用户拍板：「这 0123 是 AI 的生成框架的权限。默认最高档，不需要调整，也不需要给玩家看到。」
+     设置面板里只保留**这个世界已经长出了什么**（那是信息，不是开关）。 */
   box.appendChild(el('div', 'grp-t', '世界的框架（世界会自己长）'));
   (function () {
     const fw = (__DEV && __DEV.framework) || null;   // v1.86：框架/清单只在设置面板里（走 /api/dev）
-    const cur = fw ? fw.level : 1;
-    const row = el('div', 'row', '框架档位（当前世界）:');
-    const sel = el('select');
-    for (const o of [['0', '0 · 关闭（什么都不长）'], ['1', '1 · 词（文书类型/演出名/机构/身份）'], ['2', '2 · 词+型（结构模板：门派有山门·掌门·戒律）'], ['3', '3 · 词+型+律（世界的规则；只允许枚举/布尔/区间）']]) {
-      const op = el('option', null, o[1]); op.value = o[0]; sel.appendChild(op);
-    }
-    sel.value = String(cur);
-    sel.onchange = async () => {
-      try { const rr = await api('/api/framework/level', { level: Number(sel.value) }); if (rr.view) { V = rr.view; } toast('框架档位 → ' + sel.value, false); }
-      catch (e) { toast('改不了：' + e.message, true); }
-    };
-    row.appendChild(sel); box.appendChild(row);
     if (fw) {
       const bits = [];
       if ((fw.docKinds || []).length) bits.push('文书类型 ' + fw.docKinds.join('/'));
@@ -3155,7 +3144,6 @@ async function openSettings() {
       const mf = (__DEV && __DEV.manifest) || {};   // v1.86
       box.appendChild(el('div', 'hint', '生成清单 ' + (mf.n || 0) + ' 条（这份存档到目前新生成过什么）' + ((mf.pending || 0) ? '　⚠ 有 ' + mf.pending + ' 条没写说明' : '')));
     }
-    box.appendChild(el('div', 'hint', '档位存在**存档里**，跟着这个世界走；换一个存档就是另一个世界的样子。0 = 什么都不长（老行为）。'));
   })();
   contentTierBlock(box);
   box.appendChild(el('div', 'row', '【多 AI 分块·可选】消息回复模型:')); const msgM = el('input'); msgM.placeholder = '留空=复用主模型'; box.appendChild(msgM);

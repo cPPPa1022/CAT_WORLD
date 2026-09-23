@@ -40,7 +40,7 @@ app.whenReady().then(async () => {
   }
   const win = new BrowserWindow({
     width: 1360, height: 900, minWidth: 1024, minHeight: 700,
-    title: '小猫的世界 · v2.07', backgroundColor: '#0a0e12', autoHideMenuBar: true,
+    title: '小猫的世界 · v2.08', backgroundColor: '#0a0e12', autoHideMenuBar: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true, allowScriptsToClose: true }
   });
   // 等服务真正绑定成功（端口冲突时 server 会自动 +1 重试），用实际端口加载

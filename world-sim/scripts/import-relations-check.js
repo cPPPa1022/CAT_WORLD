@@ -130,7 +130,7 @@ console.log('[H] 生成清单渲染：框架视图缺字段不许炸');
   let threw = '', txt = '';
   try { txt = MF.readmeSkeleton(world, ''); } catch (e) { threw = String(e.message || e); }
   ok(!threw, '缺 vocab/types/rules 也不抛错' + (threw ? '（抛了：' + threw + '）' : ''));
-  ok(threw || /框架档位/.test(txt), '照样把"框架档位"写出来');
+  ok(threw || /世界自己长出来的/.test(txt), '照样把"世界长出了什么"写出来');
 }
 
 console.log('');

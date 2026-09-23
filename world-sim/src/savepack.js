@@ -35,7 +35,6 @@ function pack(data, opts) {
       era: (data.meta && data.meta.era) || '',
       worldTime: (data.current && data.current.time) || '',
       turnN: (data.current && data.current.turnN) || 0,
-      frameworkLevel: FW.level(data),
       manifestN: MF.ensure(data).items.length,
       unknownN: (data.unknown || []).length,
       hasCard: !!(o.card),
@@ -87,7 +86,6 @@ function scan(p) {
      现在整份读成规范化副本：只读，不写。 */
   const wf = (w.framework && typeof w.framework === 'object') ? w.framework : {};
   const f = {
-    level: (wf.level === undefined ? 1 : wf.level),
     vocab: {
       docKinds: Array.isArray(wf.vocab && wf.vocab.docKinds) ? wf.vocab.docKinds.slice() : [],
       fxNames: (wf.vocab && wf.vocab.fxNames && typeof wf.vocab.fxNames === 'object') ? wf.vocab.fxNames : {}
@@ -100,13 +98,10 @@ function scan(p) {
     const bad = atoms.map(a => a && a.k).filter(k => !FX.hasAtom(k));
     if (bad.length) { rep.counts.unknown++; rep.unknown.push({ what: '演出名:' + name, why: '它用了本机没有的原语：' + bad.join('/'), kept: true }); rep.needsAI.push('演出名「' + name + '」用了本机不认识的原语（' + bad.join('/') + '）——可以让 AI 看它原本想演什么，改配到本机已有的原语上'); }
   }
-  // ③ 律的形式（档 3）：不认识的先留着，不改
+  // ③ 律的形式：不认识的先留着，不改
   for (const r of (f.rules || [])) {
     if (FW.RULE_FORMS.indexOf(r.form) < 0) { rep.counts.unknown++; rep.unknown.push({ what: '律:' + r.name, why: '形式「' + r.form + '」本机不认识（只认 enum/bool/range）', kept: true }); rep.needsAI.push('律「' + r.name + '」形式不认识（' + r.form + '）——要么让 AI 改成 enum/bool/range，要么原样留着不用'); }
   }
-  // ④ 档位越界
-  const lv = Number(f.level === undefined ? 1 : f.level) || 0;
-  if (lv > 3) { rep.autoFixed.push('框架档位 ' + lv + ' → 夹到 3（本机最高档）'); }
   // ⑤ 缺清单（老存档 / 手工拼的包）
   if (!rep.counts.manifest) rep.notes.push('这份存档没有生成清单（老档或手工包）——导入后从这一刻起开始记');
   // ⑥ 不带卡
@@ -131,9 +126,7 @@ function install(p, opts) {
   if (!d.knowledge) { d.knowledge = { visited: [], knownPlaces: [], knownPeople: [], phoneContacts: [], readMsgs: [], heardNews: [], knownDocs: [] }; made.push('补 knowledge'); }
   if (!d.knowledge.knownDocs) { d.knowledge.knownDocs = []; made.push('补 knownDocs'); }
   MF.ensure(d);
-  const rawLv = (d.framework && d.framework.level !== undefined && d.framework.level !== null) ? Number(d.framework.level) : undefined;
-  const f = FW.ensure(d, 1);
-  if (rawLv !== undefined && isFinite(rawLv) && rawLv !== f.level) made.push('框架档位 ' + rawLv + ' → ' + f.level + '（本机只支持 0~3）');
+  FW.ensure(d);   // v2.08：不再有档位，导入时也不需要"夹到本机最高档"
   if (d.current) { delete d.current.artCache; delete d.current.sceneArtAI; }
   if (!Array.isArray(d.unknown)) d.unknown = [];
   // 不认识的：**原样装箱**（一个字不改），并留痕

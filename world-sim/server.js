@@ -18,7 +18,7 @@ const SCHED = require('./src/scheduler');
 const VIS = require('./src/visual');
 const CONTENT = require('./src/content');   // v1.61 内容模块槽位
 
-const BUILD = 'v2.07';
+const BUILD = 'v2.08';
 /* v1.84：存档 schema 版本。原来**世界数据零版本字段**，loadWorld 里 8 段"字段缺失就补"的迁移
    只能靠猜年代（ai.js 里还有一条用 timeoutMs===90000 猜年代的同类病）。现在：档里带版本，
    迁移有了明确边界，且迁移动作会进生成清单留痕（设计总稿 §26.3 要求"修复必须留痕"）。 */
@@ -1516,13 +1516,10 @@ const server = http.createServer(async (req, res) => {
         persist();
         return json(res, 200, { ok: true, schema: schema, unboxed: unboxed, schemas: Object.keys(current.schemas).length });
       }
-      if (u.pathname === '/api/framework/level') {
-        if (!current) return json(res, 400, { err: '还没有世界' });
-        const FW = require('./src/framework');
-        const lv = FW.setLevel(current, Number(p.level));
-        persist();
-        return json(res, 200, { ok: true, level: lv, view: G.buildView(current) });
-      }
+      /* v2.08 删：/api/framework/level 整个端点移除。
+         它存在的唯一作用是让玩家调"世界能长到哪一层"——用户拍板那不是玩家的设置，
+         而是 AI 生成框架的权限，永远最高档、不给玩家看到。
+         ⚠️ 删端点必须同步 src/worldlock.js 的写入口覆盖面表，否则 world-lock-check 会红。 */
       if (u.pathname === '/api/snapshot/save') {
         if (!current || !currentId) return json(res, 400, { ok: false, err: '还没有世界' });
         return json(res, 200, SNAP.take(current, currentId, p.kind || 'manual', p.slot));

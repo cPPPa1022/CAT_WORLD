@@ -50,7 +50,7 @@ function digest(data, report) {
   L.push('【生成清单（最近 24 条）】');
   L.push(tail.join(String.fromCharCode(10)) || '（空）');
   const f = FW.ensure(data);
-  L.push('【框架】档位 ' + f.level + '；演出名 ' + Object.keys(f.vocab.fxNames).map(k => k + '(' + f.vocab.fxNames[k].sig + ')').join('、') + '；律 ' + f.rules.map(x => x.name + ':' + x.form).join('、'));
+  L.push('【框架】演出名 ' + Object.keys(f.vocab.fxNames).map(k => k + '(' + f.vocab.fxNames[k].sig + ')').join('、') + '；型 ' + f.types.map(x => x.name).join('、') + '；律 ' + f.rules.map(x => x.name + ':' + x.form).join('、'));
   // unknown 箱**总是**写出来（哪怕是空的）——修复员要知道「到底有没有看不懂的东西」
   L.push('【unknown 箱（引擎不认识、原样留着的）】');
   if (data.unknown && data.unknown.length) { for (const u of data.unknown.slice(0, 12)) L.push('- ' + (u.what || '?') + ' —— ' + (u.why || '')); }
