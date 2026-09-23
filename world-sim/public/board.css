@@ -56,3 +56,15 @@
 .bfold-btn:hover { color: var(--fg-2); }
 .bfold-box { margin-top: 6px; max-height: 30vh; overflow-y: auto; }
 .bfl { color: var(--fg-3); font-size: var(--fs-meta); line-height: var(--lh-meta); padding: 2px 0; }
+
+/* ── v2.14 块流：新增三样 ─────────────────────────────────────────
+   用户原话：「每一个块生成好了就是固定的，接下来的块在下面继续做。」
+   屏幕改成**顺序块流**：一条 beat 一块，先来先排。
+   原来按「人」聚合（把某人本幕说的做的全塞进一块）→ 时间顺序被打散 → "乱、无脑堆叠"。
+   这三条只管"看得出边界"，不引入任何卡片底色（v4 那条层次律不破）。 */
+.bstage{ margin:16px 0 6px; padding-top:10px; border-top:1px solid var(--line, rgba(255,255,255,.10));
+  color:var(--dim, #7b8494); font-size:12px; letter-spacing:.06em; }
+.bnarr{ padding:5px 0; color:var(--fg-2, #c8cdd8); }
+.bnarr.amb{ padding:3px 0; opacity:.72; font-size:13px; }
+/* 你的那一块：只换名字的颜色，不加底、不加框（主次靠位置与亮度，不靠色块） */
+.bperson.mine .bname{ color:var(--accent, #e6b45c); }

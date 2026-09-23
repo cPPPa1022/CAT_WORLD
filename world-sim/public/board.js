@@ -182,6 +182,35 @@
     return box.childElementCount ? box : null;
   }
 
+  /* ★ v2.14 **块流**（用户原话）：
+     「每一个块生成好了就是**固定死了**的，不会再新增内容；接下来的块在下面继续做。」
+     所以渲染必须是**无状态**的：只按 log 的顺序铺，一块一块往下堆，画完就不动。
+     —— 原来按「人」聚合（focusArea 把某个人本幕说的做的全捞进同一块），于是屏幕上不是对话流，
+        而是"按人分的资料卡"：秀秀说的三句话挤在一起，中间孙福来说了什么完全看不出来。
+        **时间顺序被打散** = 用户说的"乱、无脑堆叠"；不在 cast 里的人则**整块消失** = "信息不全"。
+     现在：talk/action 一人一块、旁白一块、环境一块；先来先排，后面往下接。 */
+  function oneBlock(bb) {
+    const t = bb.type;
+    if (t === 'stage-tag') return h('div', 'bstage', txt(bb.text));
+    if (t === 'ambient' || t === 'narration') {
+      const bx = h('div', 'bnarr' + (t === 'ambient' ? ' amb' : ''));
+      bx.appendChild(h('div', 'bs-v', txt(bb.text)));
+      return bx;
+    }
+    const isMe = (t === 'user-action' || t === 'outcome');
+    const blk = h('div', 'bperson' + (isMe ? ' mine' : ''));
+    const nm = isMe ? '你' : who(bb);
+    if (nm) { const head = h('div', 'bname-row'); head.appendChild(h('span', 'bname', nm)); blk.appendChild(head); }
+    if (t === 'dialogue') {
+      const s1 = cue('', '「' + txt(bb.text) + '」', 'said'); if (s1) blk.appendChild(s1);
+      const detail = [txt(bb.action), txt(bb.expression), txt(bb.voice)].filter(Boolean).join('　');
+      const c1 = cue('', detail, 'detail'); if (c1) blk.appendChild(c1);
+    } else {
+      const a2 = cue('', txt(bb.text), 'detail'); if (a2) blk.appendChild(a2);
+    }
+    return blk;
+  }
+
   function renderBoard() {
     const layout = document.getElementById('layout');
     const world = document.getElementById('world');
@@ -212,19 +241,19 @@
 
     const wrap = h('div', 'board');
     const b = band(); if (b) wrap.appendChild(b);
-    /* 连续流：从最早到最新，**一幕都不藏**。
-       当前幕 = 焦点区 + 氛围区（最亮）；更早的幕 = 压缩成行，**越早越淡**（渐隐 = "远"，不是"藏"）。 */
+    /* ★ v2.14 顺序块流：**log 的顺序就是阅读顺序**，一条 beat 一块，画完就不动。
+       不再按幕分组、不再按人聚合、不再渐隐 —— 因为"按人聚合"会打散时间，
+       而"渐隐/折叠"会让玩家看不到自己刚做过什么（用户："我说出去，但我并不知道我没有出去"）。
+       信息一条不丢：所有 beat 都在，滚上去就能读。 */
     const atBottom = (now.scrollTop + now.clientHeight) >= (now.scrollHeight - 24);
-    for (let s = 0; s < spans.length; s++) {
-      if (s === cur) {
-        const f = focusArea(act, focusIds); if (f) wrap.appendChild(f);
-        const a = ambientArea(act, focusIds); if (a) wrap.appendChild(a);
-      } else {
-        const box = h('div', 'bolder');
-        box.style.opacity = String(Math.max(0.28, 1 - (cur - s) * 0.17));
-        for (const bb of spans[s]) { const t = compact(bb); if (t) box.appendChild(h('div', 'bfl', t)); }
-        wrap.appendChild(box);
-      }
+    const focusSet = {};
+    for (const fid of focusIds) focusSet[fid] = 1;
+    for (const bb of log) {
+      const blk = oneBlock(bb);
+      if (!blk) continue;
+      /* AI 声明的"这一拍的主角"仍然提亮（主次由 AI 定、界面不许自己挑 —— v2.07 的原则不变） */
+      if (focusSet[who(bb)]) blk.classList.add('focus');
+      wrap.appendChild(blk);
     }
     now.appendChild(wrap);
     /* 只在"本来就在底部"时跟到底 —— 你往上翻历史的时候，不许被拽下来 */
