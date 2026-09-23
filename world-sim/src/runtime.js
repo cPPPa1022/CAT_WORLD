@@ -272,6 +272,42 @@ function resolveAnchor(data, ref) {
   if ((kind === 'beyond' || kind === 'auto') && (data.beyond || []).some(b => b && String(b.id) === id)) return { ok: true, kind: 'beyond', id: id };
   return { ok: false, why: '世界上找不到这个因（' + kind + ':' + id + '）' };
 }
+
+/* ---------- v2.10.1：锚不只要**存在**，还要**说得出关系** ----------
+   自评时发现的洞：上面只验"锚存在"，于是 AI 可以**乱指一条无关的账本条目** ——
+   从"编一个字符串"变成"乱指一个 id"，**难度提高了，但没有堵死**。
+
+   补法（不判语义，只判"说得出关系"）：**cause 这句人话必须带上被引用那条东西的关键词**。
+     · 锚是实体   → cause 里必须出现**那个人的名字**（中文名两字起）
+     · 锚是账本/上游 → cause 与那条 desc/what 必须有 **≥3 字的连续重叠**
+   为什么是 3 字：中文里 3 字连续巧合的概率已经很低；而"北边下来的人越来越多" vs
+   "北边下来的人多了" -> 重叠"北边下来"（4 字）-> 过关。宁松不严 ——
+   它要拦的是**乱指**，不是**表达笨拙**。 */
+function longestOverlap(a, b) {
+  let best = 0;
+  for (let i = 0; i < a.length; i++) {
+    for (let j = i + best + 1; j <= a.length; j++) {
+      if (b.indexOf(a.slice(i, j)) >= 0) best = Math.max(best, j - i);
+    }
+  }
+  return best;
+}
+function anchorSpeaks(anchor, cause, data) {
+  const c = String(cause == null ? '' : cause).replace(/s/g, '');
+  if (!c) return { ok: false, why: '没写 cause（人话说明）' };
+  if (anchor.kind === 'entity') {
+    const e = (data.entities || {})[anchor.id] || {};
+    const nm = String(e.name || '').trim();
+    if (nm && c.indexOf(nm) >= 0) return { ok: true };
+    return { ok: false, why: 'cause 里没有出现「' + nm + '」这个名字 —— 说得出关系才算数' };
+  }
+  const src = (anchor.kind === 'ledger'
+    ? (((data.ledger || []).find(x => x && String(x.id) === anchor.id) || {}).desc || '')
+    : (((data.beyond || []).find(x => x && String(x.id) === anchor.id) || {}).what || '')
+  ).replace(/s/g, '');
+  if (longestOverlap(src, c) >= 3) return { ok: true };
+  return { ok: false, why: 'cause 和「' + String(src).slice(0, 16) + '」说不到一块去（要有 3 字以上的连续重叠）' };
+}
 function validateUpdates(data, updates, frame, ctx) {
   const allowed = []; const errors = []; const rejected = [];
   let fxSeen = 0;   // 本回合已放行的演出数（≤1，见 fx.js）
@@ -301,6 +337,9 @@ function validateUpdates(data, updates, frame, ctx) {
          要写人话，就把人话放 cause，把锚放 causeRef。 */
       const anchor = resolveAnchor(data, u.causeRef || u.cause);
       if (!anchor.ok) { deny('新人物出现必须挂在已有的因上（causeRef 指向 entity/ledger/beyond）：' + anchor.why); continue; }
+      /* v2.10.1：锚存在还不够 —— 还要说得出关系（见 anchorSpeaks）。 */
+      const spoke = anchorSpeaks(anchor, u.cause, data);
+      if (!spoke.ok) { deny('新人物出现：' + spoke.why); continue; }
       u._anchor = anchor;
     }
     if (u.type === '印象更新' && !getEntity(data, u.target)) { deny('印象更新目标不存在'); continue; }

@@ -42,18 +42,36 @@ console.log('[3] 三种锚都认（全部纯查表，0 token）');
 {
   const d1 = mk();
   d1.ledger.push({ id: 'led_off_1', t: d1.current.time, type: '镜头外事件', target: '镇子', desc: '北边下来的人越来越多' });
-  const v1 = RT.validateUpdates(d1, [spawn({ causeRef: { kind: 'ledger', id: 'led_off_1' } })], {}, {});
+  const v1 = RT.validateUpdates(d1, [spawn({ cause: '北边下来的人越来越多，镇口多了个生面孔', causeRef: { kind: 'ledger', id: 'led_off_1' } })], {}, {});
   ok(v1.allowed.length === 1, '★ 锚 = 一条已有的「镜头外事件」-> 过（**玩家可能从没见过它**，这是伏笔）');
 
   const d2 = mk();
   const someone = Object.keys(d2.entities).find(k => k !== 'player');
-  const v2 = RT.validateUpdates(d2, [spawn({ causeRef: { kind: 'entity', id: someone } })], {}, {});
-  ok(v2.allowed.length === 1, '★ 锚 = 一个已有实体 -> 过（"周师傅带来的"）');
+  const nm = d2.entities[someone].name;
+  const v2 = RT.validateUpdates(d2, [spawn({ cause: nm + '带来的生面孔', causeRef: { kind: 'entity', id: someone } })], {}, {});
+  ok(v2.allowed.length === 1, '★ 锚 = 一个已有实体 -> 过（"' + nm + '带来的"）');
 
   const d3 = mk();
   d3.beyond = [{ id: 'by_war', what: '北方战事，败局已定', visible: 'secret' }];
-  const v3 = RT.validateUpdates(d3, [spawn({ causeRef: { kind: 'beyond', id: 'by_war' } })], {}, {});
+  const v3 = RT.validateUpdates(d3, [spawn({ cause: '北方战事打输了，有人一路往南走', causeRef: { kind: 'beyond', id: 'by_war' } })], {}, {});
   ok(v3.allowed.length === 1, '★ 锚 = 世界上游事实 -> 过（更远的因，玩家永远够不到）');
+}
+
+console.log('');
+console.log('[3.5] ★ 锚存在、但"说不到一块去" -> 拒（v2.10.1 补的洞）');
+{
+  /* 自评时发现的洞：只验"锚存在"，AI 就能**乱指一条无关的账本条目** ——
+     从"编一个字符串"变成"乱指一个 id"。下面两条就是那道新门。 */
+  const d = mk();
+  d.ledger.push({ id: 'led_off_9', t: d.current.time, type: '镜头外事件', target: '镇子', desc: '沈姨的账本上记过你半个多月' });
+  const v = RT.validateUpdates(d, [spawn({ cause: '北边打仗，来了个逃兵', causeRef: { kind: 'ledger', id: 'led_off_9' } })], {}, {});
+  ok(v.allowed.length === 0, '★ 锚存在、但 cause 和它说不到一块 -> 拒（拦"乱指"）');
+  ok(/说不到一块去/.test(v.errors.join('|')), '拒绝理由点明了是"说不到一块去"');
+
+  const d2 = mk();
+  const someone = Object.keys(d2.entities).find(k => k !== 'player');
+  const v2 = RT.validateUpdates(d2, [spawn({ cause: '一个陌生人自己走来的', causeRef: { kind: 'entity', id: someone } })], {}, {});
+  ok(v2.allowed.length === 0, '★ 锚是实体、但 cause 里没提那个人的名字 -> 拒');
 }
 
 console.log('');
