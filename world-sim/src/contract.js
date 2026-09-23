@@ -70,7 +70,7 @@ const UPDATE_TYPES = [
   { type: '地点变化',     exec: 'applyMove',     hint: '带 cause；只能去**有通路**的地方，耗时会算' },
   { type: '人物离开',     exec: 'applyLeave',    hint: '带 cause；走的人在场景里会真的离开' },
   { type: '人物出现',     exec: 'applySpawn',    hint: '必须带 spawn{name,appearance,role} + cause + relation —— 禁止凭空登场' },
-  { type: '物品获取',     exec: 'applyItemGet',  hint: 'item: 东西的名字' },
+  { type: '物品获取',     exec: 'applyItemGet',  hint: 'item: 东西的名字 + **causeRef（这东西哪来的）** —— 捡的/买的/谁给的，得说得出主' },
   { type: '物品消耗',     exec: 'applyItemUse',  hint: 'item: 用掉了什么（实际扣减由引擎做）' },
   { type: '物品转移',     exec: 'applyItemMove', hint: 'item + to/from（涉及玩家的一侧由引擎改，另一端交给叙事）' },
   { type: '关系变化',     exec: 'applyRelation', hint: '**定性描述，不许数字**；带 cause' },
@@ -81,7 +81,7 @@ const UPDATE_TYPES = [
   { type: '情绪变化',     exec: 'applyMood',     hint: 'target=人物；to=新情绪（定性）' },
   { type: 'NPC状态更新',  exec: 'applyNpcState', hint: 'target + field + to。**进出本场景必须报这条**（field:location）' },
   { type: '印象更新',     exec: 'applyImpression', hint: 'target + note：玩家此刻对 TA 的印象，一句话' },
-  { type: '文档出现',     exec: 'applyDoc',      hint: 'title + body（正文全文）+ kind/aliases。**正文必须落在这里**，只写旁白等于玩家永远打不开' },
+  { type: '文档出现',     exec: 'applyDoc',      hint: 'title + body（正文全文）+ kind/aliases + **causeRef（它从哪来）**。**正文必须落在这里**，只写旁白等于玩家永远打不开。署名可以写「未署名」，但"谁把它搁在这儿的"必须有主' },
   { type: '演出',        exec: 'applyFx',       hint: 'fx=你用世界内的话起的名字 + atoms[{k,v}]。一回合最多 1 条' },
   { type: '框架',        exec: 'applyFramework', hint: 'slot(name) + fields/items + why：给这个世界添新词/型/律（不能删改已有的）' },
   /* v3.1 · 开局编译专用（用户 2026-09-19 定的第 4 条）：把"世界的声明"落成"这个人的字段"。
@@ -97,6 +97,16 @@ const UPDATE_TYPES = [
 ];
 
 const UPDATE_TYPE_NAMES = UPDATE_TYPES.map(function (x) { return x.type; });
+
+/* ---------- 「有主」：哪几类 Update 必须挂在已有的因上（v2.12） ----------
+   分界线一句话：**已经在世界里的东西不需要锚，新登场的必须有主。**
+     · 不需要：记忆新增 / 关系变化 / 情绪变化 / 事件开始结束 / 地点变化 …
+       —— 它们改的是**既有事实**，凭空不了
+     · 需要：人物出现 / 文档出现 / 物品获取
+       —— 它们是"把新东西带进玩家的世界"，而"凭空出现"只可能发生在它们身上
+   名单放在这里（而不是散在校验器里）：加一个字就能扩到新类型，
+   校验器与断言都从它读 —— 这就是 contract.js 存在的意义。 */
+const NEEDS_ANCHOR = ['人物出现', '文档出现', '物品获取'];
 
 // 生成 SYSTEM 里那段「updates 只能写这些 type」——**不再手抄**。
 // 这也顺手修掉 M4 的另一半：原来提示词里只有两个例子，**从来没列全过表**。
@@ -247,7 +257,7 @@ module.exports = {
   LEVELS: LEVELS, BANNED_LEVELS: BANNED_LEVELS, MAX_DEFAULT: MAX_DEFAULT, RANK: RANK,
   normSev: normSev, isLish: isLish, sevDefault: sevDefault, LEVEL_FROM_NEWS: LEVEL_FROM_NEWS, levelFromNews: levelFromNews,
   CREATE_TYPES: CREATE_TYPES, ACTION_EFFECTS: ACTION_EFFECTS, ACTION_EFFECT_NAMES: ACTION_EFFECT_NAMES,
-  UPDATE_TYPES: UPDATE_TYPES, UPDATE_TYPE_NAMES: UPDATE_TYPE_NAMES,
+  UPDATE_TYPES: UPDATE_TYPES, UPDATE_TYPE_NAMES: UPDATE_TYPE_NAMES, NEEDS_ANCHOR: NEEDS_ANCHOR,
   promptUpdatesBlock: promptUpdatesBlock,
   BEAT_TYPES: BEAT_TYPES, BEAT_LIMITS: BEAT_LIMITS, REQUEST_KINDS: REQUEST_KINDS,
   CONTEXT_TIERS: CONTEXT_TIERS, CONTEXT_ORDER: CONTEXT_ORDER,

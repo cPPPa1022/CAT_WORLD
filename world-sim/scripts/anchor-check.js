@@ -80,7 +80,7 @@ console.log('');
 console.log('[4] 另外两条硬要求没被放松');
 {
   const d = mk();
-  d.ledger.push({ id: 'x1', t: d.current.time, type: '镜头外事件', target: '镇子', desc: 'x' });
+  d.ledger.push({ id: 'x1', t: d.current.time, type: '镜头外事件', target: '镇子', desc: '镇口来了个生面孔' });
   const v = RT.validateUpdates(d, [spawn({ causeRef: { kind: 'ledger', id: 'x1' }, relation: '' })], {}, {});
   ok(v.allowed.length === 0 && /relation/.test(v.errors.join('|')), 'relation 仍然是硬要求');
   const v2 = RT.validateUpdates(d, [spawn({ causeRef: { kind: 'ledger', id: 'x1' }, spawn: {} })], {}, {});

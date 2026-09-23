@@ -57,22 +57,33 @@ console.log('\n[1] 意图解析：对象自己说自己叫什么');
 console.log('\n[2] 校验器：文档契约');
 (function () {
   const d = mk();
-  const bad = RT.validateUpdates(d, [{ type: '文档出现', title: '一封信' }], {}, {});
+  /* v2.12「有主」：文书也是"带进玩家世界的新东西"，必须挂在已有的因上 ——
+     未署名可以（"抄表人（未署名）"是好味道），但"谁把它搁在这儿的"必须有主。 */
+  d.ledger = d.ledger || [];
+  d.ledger.push({ id: 'led_doc', t: (d.current || {}).time || '', type: '镜头外事件', target: '镇子', desc: '有人从门缝里塞进来一张帖子' });
+  const A = { cause: '有人从门缝里塞进来一张帖子', causeRef: { kind: 'ledger', id: 'led_doc' } };
+  const bad = RT.validateUpdates(d, [Object.assign({ type: '文档出现', title: '一封信' }, A)], {}, {});
   ok(bad.allowed.length === 0 && /body/.test(bad.errors.join('')), '只有 title 没有 body → 拦下（内容只写旁白=打不开）');
-  const good = RT.validateUpdates(d, [{ type: '文档出现', title: '一封帖子', body: LETTER, kind: '帖子', aliases: ['帖子', '邀帖', '那封信'] }], {}, {});
-  ok(good.allowed.length === 1, 'title + body 齐 → 放行');
+  const good = RT.validateUpdates(d, [Object.assign({ type: '文档出现', title: '一封帖子', body: LETTER, kind: '帖子', aliases: ['帖子', '邀帖', '那封信'] }, A)], {}, {});
+  ok(good.allowed.length === 1, 'title + body 齐 + 有主 → 放行');
   ok(good.allowed[0].aliases.length === 3, 'kind / aliases 一起落库（AI 说它是什么，引擎只限长度）');
-  const huge = RT.validateUpdates(d, [{ type: '文档出现', title: '长信', body: '字'.repeat(4001) }], {}, {});
+  const huge = RT.validateUpdates(d, [Object.assign({ type: '文档出现', title: '长信', body: '字'.repeat(4001) }, A)], {}, {});
   ok(huge.allowed.length === 0, '正文超上限（>4000 字）→ 拦下');
-  const longAlias = RT.validateUpdates(d, [{ type: '文档出现', title: 'X', body: LETTER, aliases: ['这个别名长得离谱应该被截断掉', 'ok'] }], {}, {});
+  const longAlias = RT.validateUpdates(d, [Object.assign({ type: '文档出现', title: 'X', body: LETTER, aliases: ['这个别名长得离谱应该被截断掉', 'ok'] }, A)], {}, {});
   ok(longAlias.allowed[0].aliases[0].length <= 12, '过长的别名被截断（不是拒绝）');
+  const noAnchor = RT.validateUpdates(d, [{ type: '文档出现', title: '天外飞帖', body: LETTER }], {}, {});
+  ok(noAnchor.allowed.length === 0 && /挂在已有的因上/.test(noAnchor.errors.join('')),
+    '★ v2.12：文书没有主 → 拦下（未署名可以，"凭空出现"不行）');
 })();
 
 // ---------- [3] 落库与门控 ----------
 console.log('\n[3] 落库与门控');
 (function () {
   const d = mk();
-  const a = RT.validateUpdates(d, [{ type: '文档出现', title: '一封帖子', body: LETTER, kind: '帖子', aliases: ['帖子'] }], {}, {}).allowed;
+  d.ledger = d.ledger || [];
+  d.ledger.push({ id: 'led_doc2', t: (d.current || {}).time || '', type: '镜头外事件', target: '镇子', desc: '有人从门缝里塞进来一张帖子' });
+  const a = RT.validateUpdates(d, [{ type: '文档出现', title: '一封帖子', body: LETTER, kind: '帖子', aliases: ['帖子'],
+    cause: '有人从门缝里塞进来一张帖子', causeRef: { kind: 'ledger', id: 'led_doc2' } }], {}, {}).allowed;
   G.applyUpdates(d, a, d.current.time);
   const doc = Object.values(d.documents || {}).find(x => x.title === '一封帖子');
   ok(!!doc && doc.kind === '帖子' && doc.aliases[0] === '帖子', '文书落进 data.documents（带 AI 声明的 kind/aliases）');

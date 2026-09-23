@@ -297,8 +297,13 @@ function anchorSpeaks(anchor, cause, data) {
   if (!c) return { ok: false, why: '没写 cause（人话说明）' };
   if (anchor.kind === 'entity') {
     const e = (data.entities || {})[anchor.id] || {};
-    const nm = String(e.name || '').trim();
-    if (nm && c.indexOf(nm) >= 0) return { ok: true };
+    const nm = String(e.name || '').trim().replace(/\s/g, '');
+    if (!nm) return { ok: true };                       // 无名实体（地点/物）：无从对词，放行
+    if (c.indexOf(nm) >= 0) return { ok: true };
+    /* v2.12：实体锚放宽到 **2 字重叠** —— 锚常常是个地点（"云记旧楼"），
+       而 cause 里可能只写"楼里账台的抽屉"。名字 2 字带出即算说得出关系；
+       ledger/beyond 的 desc 是句子，那里仍然要 3 字（见下）。 */
+    if (longestOverlap(nm, c) >= 2) return { ok: true };
     return { ok: false, why: 'cause 里没有出现「' + nm + '」这个名字 —— 说得出关系才算数' };
   }
   const src = (anchor.kind === 'ledger'
@@ -328,18 +333,18 @@ function validateUpdates(data, updates, frame, ctx) {
        修法：把 `人物出现` 加进"允许 target 尚不存在"的名单（事件本来就在这份名单里）。 */
     const mayCreate = (u.type === '人物出现');
     if (tid && !isEvent && !mayCreate && !getEntity(data, tid) && tid !== 'player') { deny('地址不存在: ' + tid); continue; }
-    if (u.type === '人物出现' && !getEntity(data, u.target)) {
-      const sp = u.spawn || {};
-      if (!sp.name) { deny('新人物出现必须携带 spawn.name'); continue; }
-      if (!u.relation) { deny('新人物出现必须声明与玩家/已知人物的关系（relation）'); continue; }
-      /* v2.10「有主」：cause 从"非空字符串"升级为"必须解析得到的因"。
-         老写法（随便一句人话）现在会被拒 —— 这正是要消灭的"空降"。
-         要写人话，就把人话放 cause，把锚放 causeRef。 */
+    /* ---------- v2.12「有主」推广：凡"把新东西带进玩家世界"的 Update，都要有主 ----------
+       名单在 contract.js（NEEDS_ANCHOR）——加一个字就能扩到新类型。
+       分界：已经在世界里的（记忆/关系/情绪/事件进展/地点变化）不需要锚，它们改的是既有事实；
+             **新登场的**（人 / 物 / 文）必须有主，"凭空出现"只可能发生在它们身上。
+       锚必须**存在**（resolveAnchor）**且说得出关系**（anchorSpeaks）——
+       只有存在性的话，AI 乱指一条无关账目就能过关；只有相关性的话，编一句人话就能过关。 */
+    const bringNew = (u.type === '人物出现') ? !getEntity(data, u.target) : true;
+    if (CONTRACT.NEEDS_ANCHOR.indexOf(u.type) >= 0 && bringNew) {
       const anchor = resolveAnchor(data, u.causeRef || u.cause);
-      if (!anchor.ok) { deny('新人物出现必须挂在已有的因上（causeRef 指向 entity/ledger/beyond）：' + anchor.why); continue; }
-      /* v2.10.1：锚存在还不够 —— 还要说得出关系（见 anchorSpeaks）。 */
+      if (!anchor.ok) { deny(u.type + '必须挂在已有的因上（causeRef 指向 entity/ledger/beyond）：' + anchor.why); continue; }
       const spoke = anchorSpeaks(anchor, u.cause, data);
-      if (!spoke.ok) { deny('新人物出现：' + spoke.why); continue; }
+      if (!spoke.ok) { deny(u.type + '：' + spoke.why); continue; }
       /* v2.11：**宽度也要有上限**。一条上游若能被无限兑现，一个「北方战事」
          就能造出无限个逃兵 —— 那比"空降一个"还假。用尽即拒（并且该结算了）。 */
       if (anchor.kind === 'beyond') {
@@ -350,6 +355,11 @@ function validateUpdates(data, updates, frame, ctx) {
         }
       }
       u._anchor = anchor;
+    }
+    if (u.type === '人物出现' && !getEntity(data, u.target)) {
+      const sp = u.spawn || {};
+      if (!sp.name) { deny('新人物出现必须携带 spawn.name'); continue; }
+      if (!u.relation) { deny('新人物出现必须声明与玩家/已知人物的关系（relation）'); continue; }
     }
     if (u.type === '印象更新' && !getEntity(data, u.target)) { deny('印象更新目标不存在'); continue; }
     if (u.type === '记忆新增') {
