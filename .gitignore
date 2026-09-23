@@ -25,6 +25,10 @@ world-sim/sea-prep.blob
 # 临时目录（每次任务产生，用完即弃）
 .tmp-*/
 
+# 上线前的用户存档备份（v3.3 采纳机制会改写印象档，留一份可回退）
+#   ⚠️ 里面有 config.json（含 API key），**绝不允许入库**
+.backup-*/
+
 # 数据（开发模式数据根：含 477 个测试世界；用户真实存档在 %APPDATA%）
 world-sim/data/
 
