@@ -67,6 +67,31 @@ function parseIntent(data, text) {
   if (/买车票|买张票|买票/.test(t)) return { kind: 'travelTicket' };
   if (/(?:出发|上路|动身|上车|走人)\b|我出发|这(?:就|次?)走/.test(t)) return { kind: 'travelGo' };
   if ((/回(?:青石镇|镇上|老家|家)/.test(t)) && String(data.current.sceneId).indexOf('city1_') === 0) return { kind: 'move', destId: 'pl_6', destName: '镇汽车站' };
+  /* ★ v2.14 修（用户实测，原话「位置是澄江公寓-一楼便利店，买包烟都不行？」）——
+     他在便利店里打「去买包烟」，引擎回的是「你的计划：坐班车去**买包烟**——先到镇汽车站买票」。
+     两个错：
+       ① 「买」的判断排在「去」的 travelPlan **后面**（87 行 vs 71 行）—— 顺序反了；
+       ② `mBuy` 用 **^ 锚定开头**，于是「去买包烟」这种最自然的说法整个漏掉，
+          一路掉到 mDest 里被当成**目的地**（dest 是"买包烟"三个字）。
+     修法：**先看有没有明确的动作意图**（买/卖/拿/来），再谈"去哪里"——
+     并且允许自然前缀（我/想/要/去/帮我/给我/顺便）。
+     原则：**"去"只是修饰，"买"才是动作。别让修饰词把动作吃掉。** */
+  const mBuy0 = t.match(/^(?:我)?(?:想|要|打算|去|帮我|给我|顺便|再|先)?(?:买|来|要|拿)(?:一?|瓶|包|把|盒|袋|个|份|条|支)?(.+)$/);
+  /* 「要」既可以是"索要"（要一包烟）也可以是助动词（我要看那份东西）——
+     所以后面接感知/读写类动词时，这条不成立（否则「我要看X」会被当成"要X"）。
+     实测于 doc-fx-check：三种引擎没听说过的文书，各自用自称都能打开。
+     ⚠️ 注意：那条断言会检查"这些文书名**确实不在引擎源码里**"——所以这里**不能举真名**，
+        连注释里都不行（我第一版把真名写进注释，当场把那条断言弄红了）。 */
+  if (mBuy0 && !/^(?:看|读|开|翻|查|听|问|说|想|瞅|瞧)/.test(mBuy0[1].trim())) {
+    const nm0 = mBuy0[1].trim();
+    const it0 = Object.values(data.entities).find(e => e.type === 'item' && (e.at === data.current.sceneId) && (e.name.indexOf(nm0) >= 0 || nm0.indexOf(e.name) >= 0));
+    if (it0) return { kind: 'buy', itemId: it0.id };
+    const legacy0 = { 牛奶: 'it_milk', 水: 'it_milk', 烟: 'it_smoke', 香烟: 'it_smoke', 红塔山: 'it_smoke', 雨披: 'it_scarf', 伞: 'it_umbrella' }[nm0];
+    if (legacy0) return { kind: 'buy', itemId: legacy0 };
+    /* 东西不在手边（店里没这件货）：**仍然算"买"**，让 AI 去演"店里没有"或"你买到了"，
+       而不是掉进 travelPlan 说"你的计划是坐班车去买XX"。 */
+    if (nm0.length <= 6) return { kind: 'buy', itemId: '', want: nm0 };
+  }
   const mTravel = t.match(/去(省城|临江|外地|大城市|新城市|城里)/);
   const mDest = t.match(/^(?:我要|我想|打算)?去([^，。！？、\s]{2,6}市?)$/);
   const farDest = (mTravel && mTravel[1]) || (mDest ? mDest[1] : null);
@@ -84,15 +109,6 @@ function parseIntent(data, text) {
   // v1.46「打开/读/查看」——可读文本是一等公民（此前落到兜底 act，AI 只能再编一段动作来填空）
   const rd = matchReadIntent(data, t);
   if (rd) return rd;
-  const mBuy = t.match(/^(?:买|来|要|拿)(?:一?|瓶|包|把|盒|袋|个|份)(.+)$/) || t.match(/^(?:买|来|要|拿)([^，。！？、\s]+)$/);
-  if (mBuy) {
-    const nm = mBuy[1].trim();
-    const item = Object.values(data.entities).find(e => e.type === 'item' && (e.at === data.current.sceneId) && (e.name.indexOf(nm) >= 0 || nm.indexOf(e.name) >= 0));
-    if (item) return { kind: 'buy', itemId: item.id };
-    // 演示世界兼容
-    const legacy = { 牛奶: 'it_milk', 水: 'it_milk', 烟: 'it_smoke', 红塔山: 'it_smoke', 雨披: 'it_scarf', 伞: 'it_umbrella' }[nm];
-    if (legacy) return { kind: 'buy', itemId: legacy };
-  }
   const mSell = t.match(/^(?:卖|出|退)(?:掉|了)?(.+)$/);
   if (mSell) {
     const nm = mSell[1].trim();
@@ -993,7 +1009,12 @@ async function runTurn(data, text, cfg, opts) {
     ctx.opLog = (ctx.opLog ? ctx.opLog + '；' : '') + '（' + fxs.lines.join('；') + '）';
   }
   // ---------- 交易（确定性；账本 + 余额；世界不赊账） ----------
-  if (intent.kind === 'buy' && intent.itemId) {
+  /* ★ v2.14：说了"买XX"但**店里没有那件货** —— 也必须给结果行。
+     否则玩家提了这件事，屏幕上什么都不发生 = "我买到了吗？不知道"。
+     这一支不走交易系统（没价、没货），只把"你要买什么"明确交出去，但**结果行必须有**。 */
+  if (intent.kind === 'buy' && !intent.itemId && intent.want) {
+    ctx.opLog = (ctx.opLog ? ctx.opLog + '；' : '') + '（你要买「' + intent.want + '」——先看这儿有没有）';
+  } else if (intent.kind === 'buy' && intent.itemId) {
     const it = getEntity(data, intent.itemId);
     const price = it ? (it.price || 0) : 0;
     const afford = tryPay(data, price, it ? it.name : '东西');
