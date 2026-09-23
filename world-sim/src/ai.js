@@ -249,13 +249,14 @@ function sweepThink(out) {
       if (b && b.text) b.text = stripThink(b.text);
       // v1.31：新槽位（action/expression/voice）必须一起清洗+限长，否则思考文本会漏到画面里。
       // tone 保留兼容（旧卡/演示 AI 还在用），但前端不再把它渲染成标签。
-      if (b && b.tone) b.tone = stripThink(b.tone).slice(0, 8);
+      const LIM = CONTRACT.BEAT_LIMITS;   // v2.09：限长从契约取（唯一真源），不再各写各的
+      if (b && b.tone) b.tone = stripThink(b.tone).slice(0, LIM.tone.cut);
       /* v1.89：限长必须**跟着契约走** —— 契约给 expression 20 字、这里切 12 字，
          等于提示词里答应的东西被静默砍掉一半（玩家看到的还是标签长度的东西）。
          这条耦合很隐蔽：以后改契约的字数额度，**这里要一起改**。 */
-      if (b && b.action) b.action = stripThink(b.action).slice(0, 60);
-      if (b && b.expression) b.expression = stripThink(b.expression).slice(0, 40);
-      if (b && b.voice) b.voice = stripThink(b.voice).slice(0, 32);
+      if (b && b.action) b.action = stripThink(b.action).slice(0, LIM.action.cut);
+      if (b && b.expression) b.expression = stripThink(b.expression).slice(0, LIM.expression.cut);
+      if (b && b.voice) b.voice = stripThink(b.voice).slice(0, LIM.voice.cut);
     }
     for (const u of (out.updates || [])) if (u && u.content) u.content = stripThink(u.content);
     for (const q of (out.requests || [])) if (q && q.need) q.need = stripThink(q.need);
@@ -406,8 +407,8 @@ function SYSTEM(data, cfg2, noCharter) {
     '（画面由引擎负责，你不要输出画；专注台词与动作。）',
     '任何"思考/分析/计划/推理"性质的文本都不属于作品内容：禁止写进 JSON 的任何字段——世界观内的推导只能通过角色言行表现出来，模型自身的过程是幕后（剧透=违规）。',
     '【beats 槽位 · 严格分开写】每条 beat 是**一个**明确的东西，不要再把动作塞进台词括号里：',
-    '  · dialogue（谁说了什么）：{type:"dialogue", speaker:"npc1", action:"她身体在做什么（≤30字）", expression:"**看得见**的征候（≤20字：眼神/眉梢/唇角/呼吸/指尖）", voice:"**听得见**的征候（≤16字：音高/语速/停顿/气声）", text:"台词正文，不要带括号、不要带动作"}',
-    '  · action（谁做了什么）：{type:"action", actor:"npc1", text:"动作本身（≤40字）"} —— 必须写 actor；没有归属的动作才用 narration。',
+    '  · dialogue（谁说了什么）：{type:"dialogue", speaker:"npc1", action:"她身体在做什么（≤' + CONTRACT.BEAT_LIMITS.action.hard + '字）", expression:"**看得见**的征候（≤' + CONTRACT.BEAT_LIMITS.expression.hard + '字：眼神/眉梢/唇角/呼吸/指尖）", voice:"**听得见**的征候（≤' + CONTRACT.BEAT_LIMITS.voice.hard + '字：音高/语速/停顿/气声）", text:"台词正文，不要带括号、不要带动作"}',
+    '  · action（谁做了什么）：{type:"action", actor:"npc1", text:"动作本身（≤' + CONTRACT.BEAT_LIMITS.actText.hard + '字）"} —— 必须写 actor；没有归属的动作才用 narration。',
     '  · ambient（环境）：雨声/钟表/街上动静。**它不承载信息量就不要写**——不要用来凑条数。**硬规矩：一回合 ambient 最多 2 条**。',
     '  · narration：镜头/旁白。**不要用来复述已经用 dialogue/action 演过的事。**',
     /* v3.0 · 镜头（focus）：**主次由 AI 定，不由代码的公式定**（用户 2026-09-19 定的）。

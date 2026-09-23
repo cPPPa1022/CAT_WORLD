@@ -102,11 +102,23 @@ function promptUpdatesBlock() {
 
 // ---------- Frame 契约 ----------
 const BEAT_TYPES = ['dialogue', 'action', 'ambient', 'narration'];
-const BEAT_SLOTS = {
-  dialogue: 'speaker(在场id) + action(<=20字) + expression(<=12字) + voice(<=12字) + text(台词正文)',
-  action: 'actor(人物id) + text(<=40字)',
-  ambient: 'text（环境声/光；不承载信息就别写，一回合最多 2 条）',
-  narration: 'text（镜头/旁白；不要复述已演过的事）'
+/* ---------- beats 槽位限长：**唯一真源**（v2.09 重建） ----------
+   原来这里是 BEAT_SLOTS —— 一段**全项目从没有人用过**的声明（只有"定义"和"导出"两处），
+   而且数字还是过时的：它写 action≤20 / expression≤12 / voice≤12，
+   而真正的提示词（ai.js:409）写 30/20/16、代码截断（sweepThink）切 60/40/32。
+   **一份号称"单一真源"的文件，自己躺着一份没人用又对不上的副本** —— 这是"每次扫描都能扫出问题"的最小样本。
+
+   现在改成**会真的被用**的表：
+     · hard = 提示词里给 AI 的字数契约（ai.js 从它**生成**那段槽位说明）
+     · cut  = 代码实际截断的上限（安全网，不是契约；0 = 不截）
+   两个数放同一行，是因为 v1.89 出过事故：契约给 20 字、代码切 12 字，
+   **提示词里答应的东西被静默砍掉一半** —— 根因就是这两个数分居两处、靠人同步。 */
+const BEAT_LIMITS = {
+  action:     { hard: 30, cut: 60 },   // dialogue beat 的「她身体在做什么」
+  expression: { hard: 20, cut: 40 },   // 看得见的征候
+  voice:      { hard: 16, cut: 32 },   // 听得见的征候
+  actText:    { hard: 40, cut: 0 },    // action beat 的「动作本身」（不截断）
+  tone:       { hard: 8,  cut: 8  }    // 旧槽位（兼容旧档/演示 AI），前端已不渲染成标签
 };
 
 // ---------- requests 契约（世界导演） ----------
@@ -231,7 +243,7 @@ module.exports = {
   CREATE_TYPES: CREATE_TYPES, ACTION_EFFECTS: ACTION_EFFECTS, ACTION_EFFECT_NAMES: ACTION_EFFECT_NAMES,
   UPDATE_TYPES: UPDATE_TYPES, UPDATE_TYPE_NAMES: UPDATE_TYPE_NAMES,
   promptUpdatesBlock: promptUpdatesBlock,
-  BEAT_TYPES: BEAT_TYPES, BEAT_SLOTS: BEAT_SLOTS, REQUEST_KINDS: REQUEST_KINDS,
+  BEAT_TYPES: BEAT_TYPES, BEAT_LIMITS: BEAT_LIMITS, REQUEST_KINDS: REQUEST_KINDS,
   CONTEXT_TIERS: CONTEXT_TIERS, CONTEXT_ORDER: CONTEXT_ORDER,
   assertContract: assertContract, assertContextOrder: assertContextOrder
 };

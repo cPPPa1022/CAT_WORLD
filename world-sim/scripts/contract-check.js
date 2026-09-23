@@ -61,6 +61,28 @@ const RT = require('../src/runtime');
 const rtList = RT.UPDATE_TYPES || [];
 ok(rtList.length === C.UPDATE_TYPE_NAMES.length && rtList.every((x, i) => x === C.UPDATE_TYPE_NAMES[i]), 'runtime.js 的白名单 === contract（同一份）');
 
+/* ---------- 槽位限长：也必须只有一处（v2.09 加） ----------
+   为什么加这条：contract.js 里原来躺着一份 **全项目没人用过**的 BEAT_SLOTS，
+   它写 action≤20 / expression≤12 / voice≤12；而真提示词（ai.js）写 30/20/16、
+   代码截断（sweepThink）切 60/40/32 —— **一个号称"单一真源"的文件，三处三个数**。
+   这份断言守着：数字只能出自一处，改了契约，提示词和截断同时跟着变。 */
+{
+  const aiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ai.js'), 'utf8');
+  ok(!!C.BEAT_LIMITS && C.BEAT_LIMITS.expression && C.BEAT_LIMITS.expression.hard === 20,
+    '契约里有 BEAT_LIMITS（expression.hard=20）');
+  ok(/BEAT_LIMITS\.\w+\.hard/.test(aiSrc), '★ 提示词的字数**从契约取**（不再手写 ≤N字）');
+  ok(/BEAT_LIMITS/.test(aiSrc), '★ 截断也从契约取');
+  /* 收准范围：只守 sweepThink 里那四个**槽位**的截断（ai.js 别处还有 unrelated 的 .slice(0,N)，
+     例如 ai.js:668 的性格内核 60 字 —— 那是资料包字段，不是 beat 槽位，不该被这条断言牵连）。 */
+  const sweepSrc = aiSrc.slice(aiSrc.indexOf('function sweepThink'), aiSrc.indexOf('function stripJson'));
+  ok(/LIM\.action\.cut/.test(sweepSrc) && /LIM\.expression\.cut/.test(sweepSrc)
+    && /LIM\.voice\.cut/.test(sweepSrc) && /LIM\.tone\.cut/.test(sweepSrc),
+    '★ sweepThink 的四个槽位截断**全部**从契约取');
+  ok(!/slice\(0, \d+\)/.test(sweepSrc.replace(/LIM\.\w+\.cut/g, 'CUT')),
+    '★ sweepThink 里没有写死的字数（改契约就同时改提示词与截断）');
+  ok(!('BEAT_SLOTS' in C), '★ 死掉的 BEAT_SLOTS 已移除（没人用、又和真提示词对不上的那份副本）');
+}
+
 console.log('');
 console.log('pass=' + pass + ' fail=' + fail);
 process.exitCode = fail ? 1 : 0;
