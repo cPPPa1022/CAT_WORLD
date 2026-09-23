@@ -137,6 +137,24 @@ const BEAT_LIMITS = {
   tone:       { hard: 8,  cut: 8  }    // 旧槽位（兼容旧档/演示 AI），前端已不渲染成标签
 };
 
+/* ---------- frame.suggestions —— 玩家角色的**内在念头**（v3.3） ----------
+   ⚠️ 与 v1.84 删掉的 `frame.options` **不是同一个东西**，别一起删：
+      options     = 系统告诉玩家"能做什么"（UI 越权 —— 当初删得对）
+      suggestions = 玩家自己脑子里冒出来的（内在声音 —— Disco Elysium 那个东西）
+   人做下一步之前，脑子里本来就会先冒出一句念头。所以它不是外挂，**它是玩家角色的一部分**。
+   四条宪法逐条对账：① 视角受限 → **强化**（原料只能来自玩家已知，天然门控）
+                    ② 无数值 → 念头不带成败判定、不带奖励
+                    ③ 无终局 → 它是念头，不是任务；不理它，世界不会有任何变化
+                    ④ 世界不等你 → 它不推动世界时间
+   两条硬约束（违了就从"念头"变成"攻略"）：
+      ① 不许提到玩家不知道的人 / 地方（game.js 逐条丢弃，不补）
+      ② 不许暗示接下来会发生什么 —— 念头只能指向"我想做什么"
+   人称：**第一人称**；语气是念头（有疑问/欲望/懒/脾气），不是命令。 */
+const SUGGEST_MAX = 6;
+const SUGGEST_LEN = 24;    // 单条字数上限：念头是短的
+// 四种性质（借酒馆那份成熟预设的谱系）——全是"该干什么"会变成任务列表，所以要留出跑题的
+const SUGGEST_KINDS = ['顺延当前场景', '小幅推进', '时间推进', '跑题的新奇念头'];
+
 // ---------- requests 契约（世界导演） ----------
 const REQUEST_KINDS = ['event', 'person', 'place', 'item', 'action', 'news', 'city', 'org'];
 
@@ -260,6 +278,7 @@ module.exports = {
   UPDATE_TYPES: UPDATE_TYPES, UPDATE_TYPE_NAMES: UPDATE_TYPE_NAMES, NEEDS_ANCHOR: NEEDS_ANCHOR,
   promptUpdatesBlock: promptUpdatesBlock,
   BEAT_TYPES: BEAT_TYPES, BEAT_LIMITS: BEAT_LIMITS, REQUEST_KINDS: REQUEST_KINDS,
+  SUGGEST_MAX: SUGGEST_MAX, SUGGEST_LEN: SUGGEST_LEN, SUGGEST_KINDS: SUGGEST_KINDS,
   CONTEXT_TIERS: CONTEXT_TIERS, CONTEXT_ORDER: CONTEXT_ORDER,
   assertContract: assertContract, assertContextOrder: assertContextOrder
 };

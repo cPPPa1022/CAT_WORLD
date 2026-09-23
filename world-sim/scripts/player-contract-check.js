@@ -12,6 +12,7 @@
 const AI = require('../src/ai');
 const W = require('../src/world');
 const G = require('../src/game');
+const GATE = require('../src/gate');   // v3.3：名字门控的断言要用"那把唯一的尺子"
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { c ? (pass++, console.log('  OK  ' + m)) : (fail++, console.log('  FAIL ' + m)); };
@@ -118,6 +119,67 @@ AI.llmJSON = async function (cfg, messages) {
     ok(!tv || !logs.some(l => String(l.text || '').indexOf(tv) >= 0), '教程提示不进剧情原文 —— 它是引导，不是世界内容（' + JSON.stringify(tv) + '）');
     const inView = (r.view.sceneLog || []).filter(l => l.type === 'reaction');
     ok(inView.length >= 1, '★ reaction 进了 buildView（玩家看得见）');
+  }
+
+  /* ── v3.3 名字门控：两个洞都是**实测**出来的，不是推演 ──────────────────────── */
+  console.log('');
+  console.log('[7] 玩家自己的认知 vs 印象档');
+  {
+    /* ① 实测（真实存档 w__muem2yglfdtge，4 回合）：玩家经历第一句是
+       「你生在最有钱的赵家，是**赵德柱**唯一的儿子」，而印象档说他"不知道名字"——
+       玩家连自己父亲的名字都不知道。同屏后果：「我」面板写着赵德柱，
+       同一回合叙事把他打成「一个看不清面孔的人」，AI 资料包里他还是陌生人。 */
+    const d = newWorld();
+    const pid = Object.keys(d.entities).find(k => d.entities[k].type === 'person' && k !== 'player');
+    const pname = d.entities[pid].name;
+    d.entities.player.profile = d.entities.player.profile || {};
+    d.entities.player.profile.background = { 经历: '你是' + pname + '唯一的儿子，从小在镇上长大。' };
+    delete (d.impressions || {})[pid];
+    ok(GATE.nameOf(d, pid) === pname, '★ 经历里点名的人 -> 门控认（"不知道自己父亲叫什么"这种漏）');
+
+    /* ② 采纳绝不能变成"一修就全放开"：认知里没提到的人，一律还是不知道 */
+    const nm2 = (d2x) => String(((d2x.entities.player.profile || {}).background || {}).经历 || '')
+      + Object.values(d2x.memories || {}).filter(m => m.owner === 'player').map(m => m.content || '').join(' ');
+    const d2 = newWorld();
+    const stranger = Object.keys(d2.entities).find(k => d2.entities[k].type === 'person' && k !== 'player'
+      && String(d2.entities[k].name || '').length > 1 && nm2(d2).indexOf(d2.entities[k].name) < 0);
+    ok(!stranger || GATE.nameOf(d2, stranger) === null,
+      '★ 认知里没提到的人' + (stranger ? '「' + d2.entities[stranger].name + '」' : '') + '仍然不知道（不许顺手全放开）');
+
+    /* ③ 印象档里显式写"明确不知道"（nameKnown===false）是**档案作者的判断**，采纳不许覆盖它
+       —— 门控规则②（gate.js:145）得留一个说了算的出口。 */
+    const d3 = newWorld();
+    d3.entities.player.profile = d3.entities.player.profile || {};
+    d3.entities.player.profile.background = { 经历: '你和' + pname + '一起长大。' };
+    d3.impressions = d3.impressions || {};
+    d3.impressions[pid] = { stage: 2, nameKnown: false, traits: [], notes: [], bonds: [], seen: '' };
+    ok(GATE.nameOf(d3, pid) === null, '★ 显式"明确不知道"的人不被采纳覆盖（规则②优先）');
+
+    /* ④ 玩家给某人起的叫法（nameKnown 存的是称呼，不是实体真名）不许被采纳改掉
+       —— 门控规则④"取 nameKnown 优先，其次实体真名"。 */
+    const d4 = newWorld();
+    d4.entities.player.profile = d4.entities.player.profile || {};
+    d4.entities.player.profile.background = { 经历: '大家都管' + pname + '叫别的。' };
+    d4.impressions = d4.impressions || {};
+    d4.impressions[pid] = { stage: 3, nameKnown: '沈大姐', traits: [], notes: [], bonds: [], seen: '' };
+    ok(GATE.nameOf(d4, pid) === '沈大姐', '★ 玩家心里的叫法（"沈大姐"）不被实体真名覆盖');
+  }
+
+  console.log('');
+  console.log('[8] speaker / actor 不得成为绕过名字门控的通道');
+  {
+    /* 实测：speaker:'张三丰'（世界里根本没有这个人）原来一路裸奔进玩家视图 ——
+       因为 resolveSpeaker 的最后一行是 return String(sid)，而 whoName 只拦 id 形态。
+       后果：AI 想在屏幕上印谁的名字，塞进 speaker 就行，**不需要任何 Update、不需要锚、
+       不需要走人物出现**，知识门控和「有主」被一个字段一起绕过去。 */
+    const d = newWorld();
+    d.sceneLog = [
+      { t: d.current.time, type: 'dialogue', speaker: '张三丰', text: '无中生有的一句话' },
+      { t: d.current.time, type: 'action', actor: '李四光', text: '无中生有的一个动作' }
+    ];
+    const s = JSON.stringify(G.buildView(d));
+    ok(s.indexOf('张三丰') < 0, '★ 世界里查不到的人名塞进 speaker -> 不上屏');
+    ok(s.indexOf('李四光') < 0, '★ actor 同罪（v1.97 只修了"id 形态显示成 ？"，没堵住"编个名字"）');
   }
 
   AI.isLive = realIsLive; AI.llmJSON = realLlmJSON;

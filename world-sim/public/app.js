@@ -28,7 +28,7 @@ let __galleryReady = false;   // 图库（第二个数据源）是否已针对�
 let __lastFxSeq = 0;          // 本回合演出（fx.js 词表）已播到的序号
 let __lastDocSeq = 0;         // 文书展开（文档对象）已展开到的序号
 let __expDay = '';            // v1.54「你经历过」按哪一天筛选
-const BUILD = 'v2.08';
+const BUILD = 'v3.3';
 /* v1.86：**开发者字段走 /api/dev**（世界视图 /api/state 默认不含它们）。
    为什么：原来 buildView 一份 JSON 兼作世界呈现 + 设置面板 + 诊断，任何新增字段默认就对前端可见 ——
    "开发者信息不上桌"（catworld-ui 越权红线 4）只能靠纪律守。现在默认隐藏，只在 ?dev 或设置面板里取。 */
@@ -678,7 +678,7 @@ function refresh(view) {
   }
   /* v1.98 · P0-2：服务端说的"世界正忙"在这里生效（view.busy 由 /api/state 外挂，见 server.js） */
   try { if (view && Object.prototype.hasOwnProperty.call(view, 'busy')) setBusy(!!view.busy, true); } catch (e) { __deg("app.js", e); }
-  for (const fn of [renderTopbar, renderStage, renderChips, renderPanel, renderStatline]) {
+  for (const fn of [renderTopbar, renderStage, renderChips, renderThoughts, renderPanel, renderStatline]) {
     try { fn(); } catch (e) { try { toast('界面渲染出错：' + String(e.message || e), true); } catch (e2) { __deg("app.js", e2); } }
   }
   try { jsok(); } catch (e) { __deg("app.js", e); }
@@ -1333,6 +1333,27 @@ function renderChips() {
   }
   // 没有任何可注意的东西时：给一句世界的空状态，而不是空白
   if (!c.childElementCount) c.appendChild(el('span', 'notice-empty', '四下里一时没什么特别的。'));
+}
+/* v3.3 念头（V.suggestions）：**玩家的内在声音**。
+   它和 v1.84 删掉的 frame.options（系统告诉玩家"你能做什么"）的区别，全在这个渲染里：
+     · 文案是 AI 用第一人称写的念头（"我是不是该去问问…"），不是祈使句命令
+     · 点一下**只写进输入框**、不提交 —— 动笔的还是玩家（和 .qt 的"帮你起个头"同一条规矩）
+     · 视觉上最暗的一层，跟「你注意到」不同色：那句是世界的，这句是自己的
+   服务端已经逐条门控过（提到玩家不认识的人/不知道的地名的那条已经被丢掉），
+   这里**只渲染、不裁剪、不补** —— 拿公式替玩家想，等于把"念头"变回"任务列表"。 */
+function renderThoughts() {
+  const c = $('#thoughts');
+  if (!c) return;
+  c.innerHTML = '';
+  const list = (V.suggestions || []).filter(x => x && String(x).trim());
+  c.classList.toggle('has', list.length > 0);
+  if (!list.length) return;
+  c.appendChild(el('span', 'th-h', '我心里'));
+  for (const s of list) {
+    const b = el('button', 'th-i', String(s));
+    b.onclick = () => { const cmd = $('#cmd'); if (cmd) { cmd.value = String(s); cmd.focus(); } };
+    c.appendChild(b);
+  }
 }
 function applyThemeSel(t) { document.body.dataset.theme = (t && t !== 'mint') ? t : 'mint'; if (!t || t === 'mint') delete document.body.dataset.theme; }
 function setBusy(b, fromServer) {

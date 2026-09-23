@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小猫的世界 · world-sim</title>
 <link rel="stylesheet" href="/style.css?v=73">
-<link rel="stylesheet" href="/tokens.css?v=59">
+<link rel="stylesheet" href="/tokens.css?v=60">
 <link rel="stylesheet" href="/studio.css?v=17">
 <!-- UX 版（2026-09-19）：第一印象覆盖层。必须排在最后，它靠覆盖前三个文件生效。 -->
 <link rel="stylesheet" href="/ux.css?v=1">
 <!-- UX v2：「各就各位」版面（board.js）。加 ?stream 退回流式叙事。 -->
-<link rel="stylesheet" href="/board.css?v=2">
+<link rel="stylesheet" href="/board.css?v=3">
 </head>
 <body>
 <div id="app" class="hidden">
@@ -23,6 +23,8 @@
   <footer id="dock">
     <div id="statline" class="hidden"></div>
     <div id="notice"></div>
+    <!-- v3.3 念头：玩家的内在声音。空着时整行不占高度（见 tokens.css #thoughts）。 -->
+    <div id="thoughts"></div>
     <div id="quicktabs"><span class="qt" data-k="say">我说</span><span class="qt" data-k="act">我做</span><span class="qt-hint">点一下只是帮你起个头，直接写也行</span></div>
     <div id="inputbar">
       <textarea id="cmd" rows="1" placeholder="你想做什么？直接写，世界会听懂"></textarea>
@@ -95,8 +97,8 @@
   });
 })();
 </script>
-<script src="/app.js?v=116"></script>
-<script src="/board.js?v=4"></script>
+<script src="/app.js?v=117"></script>
+<script src="/board.js?v=5"></script>
 <script src="/studio.js?v=7"></script>
 </body>
 </html>

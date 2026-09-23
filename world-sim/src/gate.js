@@ -145,7 +145,74 @@ function scrubAll(data, frame) {
    规则：① 印象 stage>=2 才算"知道名字" ② nameKnown===false = 明确不知道
         ③ id 形态永不作为称呼 ④ 取 nameKnown 优先，其次实体真名。 */
 const ID_SHAPE = /^[a-z]+[_-]?\d+$/i;
+/* ★ v3.3 · **玩家自己的认知，就是"他知道这个名字"的证据。**
+   病（实测于真实存档 w__muem2yglfdtge，不是演示世界的偶然）：
+   玩家的「经历」里写着"和赵德柱一起…"、记忆里写着"陈思思托你带话"，
+   而印象档说这三个人"不知道名字"（stage 1，nameOf=null）。同一块屏幕上于是出现：
+     · 「我」面板（认知层）**写着他们的名字**
+     · 同一回合的叙事把同一个人打成「一个看不清面孔的人」（scrubText 按 nameOf 判）
+     · AI 资料包里他们还是陌生人
+   —— 玩家亲眼看着自己"忘掉"了自己认识的人。
+   为什么会这样：这两份文本的来历是**角色卡**（import.js 写 profile.background.经历）
+   和早先落库的记忆，它们**从不经过门控** —— 门控只管 AI 当回合产出的 frame。
+   两条知识源打架时以**玩家认知**为准（三投影：客观事件流 / 人物记忆 / 玩家认知）。
+   这不是"放开门控"：恰恰相反，判据从此不再是"谁播过印象档"这种实现细节，
+   而是"玩家到底知不知道"。
+   为什么长在 nameOf 里、而不是某个调用点：nameOf 就是"玩家知不知道这个名字"的唯一执行点
+   （本文件 140 行那段注释记着"五处各写一遍判据"的教训）。对齐一旦挂在调用点上，
+   下一个绕过它的调用方就会让两套尺子复活 —— 我第一版正是挂在 ensureKnowledge 上，
+   被一个直接调 nameOf 的探针当场抓住。
+   成本：读玩家侧文本（profile / owner=player 的记忆 / meta.self）+ 扫一遍人物实体。
+   用"记忆条数/实体个数"的签名做幂等戳：新人物、新记忆都会让签名变，于是重新对齐；
+   profile 只在开局写一次，所以签名不变也不会漏。
+   边界：只采纳**世界里真的存在的人**；已经知道的（nameOf 有值）不动；
+   显式 nameKnown===false（档案作者的判断）不覆盖。 */
+function adoptSelfNames(data) {
+  if (!data || !data.entities) return 0;
+  const ents = data.entities;
+  /* 签名要能抓住"玩家认知变了"这件事：条数抓不住"正文被改写、条数不变"的情况，
+     所以把 owner=player 的记忆正文长度一起算进去。profile 只在开局写一次，不参与签名。 */
+  let sig = Object.keys(ents).length + '';
+  for (const k of Object.keys(data.memories || {})) {
+    const m = data.memories[k];
+    if (m && m.owner === 'player') sig += ',' + String(m.content || '').length;
+  }
+  if (data._selfNameSig === sig) return 0;
+  data._selfNameSig = sig;          // 先盖戳：下面要调 nameOf，别递归进来
+  const p = ents.player;
+  if (!p) return 0;
+  let text = '';
+  const eat = (o, depth) => {
+    if (o == null || depth > 3) return;
+    if (typeof o === 'string') { text += ' ' + o; return; }
+    if (typeof o !== 'object') return;
+    for (const v of Object.values(o)) eat(v, depth + 1);
+  };
+  eat(p.profile, 0);
+  eat((data.meta || {}).self, 0);
+  for (const m of Object.values(data.memories || {})) if (m && m.owner === 'player' && m.content) text += ' ' + m.content;
+  if (!text) return 0;
+  let n = 0;
+  for (const id of Object.keys(ents)) {
+    const e = ents[id];
+    if (!e || e.type !== 'person' || id === 'player' || !e.name) continue;
+    if (text.indexOf(String(e.name)) < 0) continue;   // 名字没出现在玩家自己的认知里 -> 与本次无关
+    if (nameOf(data, id)) continue;                   // 已经知道（尺子只有一把，不重复判）
+    const imps = (data.impressions = data.impressions || {});
+    const imp = (imps[id] = imps[id] || { stage: 0, seen: '', traits: [], notes: [], bonds: [] });
+    if (imp.nameKnown === false) continue;            // 显式"明确不知道"= 档案作者的决定，不覆盖
+    if (!Array.isArray(imp.traits)) imp.traits = [];
+    if (!Array.isArray(imp.notes)) imp.notes = [];
+    if (!Array.isArray(imp.bonds)) imp.bonds = [];
+    if (typeof imp.seen !== 'string') imp.seen = '';
+    imp.stage = Math.max(imp.stage || 0, 2);
+    imp.nameKnown = e.name;
+    n++;
+  }
+  return n;
+}
 function nameOf(data, id) {
+  adoptSelfNames(data);   // v3.3：先让尺子和玩家自己的认知对齐（幂等，见上）
   if (!id) return null;
   if (id === 'player') return ((data.entities || {}).player || {}).name || '你';
   const e = (data.entities || {})[id];
@@ -154,7 +221,11 @@ function nameOf(data, id) {
   if (!imp) return null;
   if ((imp.stage || 0) < 2) return null;
   if (imp.nameKnown === false) return null;
-  const nm = String(imp.nameKnown || e.name || '').trim();
+  /* v3.3 硬化：nameKnown 的契约是"人名字符串"，另有 false（明确不知道）与 null（没印象）。
+     但它被**外部写入方**碰过（import.js / 插件 / 手改存档），而 true 这种"看起来对"的写法
+     会被 String() 变成字面量 "true" —— 玩家/AI 就会管一个人叫"true"。
+     实测（anchor-check [8] 的第一版夹具就写成 true 撞上了）：所以非字符串一律回落到实体真名。 */
+  const nm = String((typeof imp.nameKnown === 'string' && imp.nameKnown) ? imp.nameKnown : (e.name || '')).trim();
   if (!nm || ID_SHAPE.test(nm)) return null;
   return nm;
 }
@@ -278,5 +349,5 @@ function noteRejected(data, ad, info) {
 // 给开发者视图看的现状（0 token；玩家侧看不到"门"这件事）
 function gateView(data) { const g = gateState(data); return { lastL3Day: g.lastL3Day || '', rejected: g.rejected || 0, last: g.last || null, rejects: (g.rejects || []).slice(-4) }; }
 
-module.exports = { DIRECTOR_HINT, scrubNotes, scrubAll, scrubText, scrubFrame, conflicts, render, nameOf,
+module.exports = { DIRECTOR_HINT, scrubNotes, scrubAll, scrubText, scrubFrame, conflicts, render, nameOf, adoptSelfNames,
   admitEvent, noteAdmitted, noteRejected, foreshadowExists, gateView, gateState, worldMax };

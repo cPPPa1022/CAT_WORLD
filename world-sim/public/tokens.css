@@ -165,6 +165,25 @@ header#worldbar > #topbar { display:flex; flex-direction:column; gap:2px; flex:1
 #notice .notice-item:hover, #notice .notice-item:focus-visible { border-bottom-color:var(--notice); }
 #notice .notice-empty { color:var(--fg-3); font-size:var(--fs-meta); }
 
+/* ⑥ 念头（v3.3）：**玩家的内在声音**，不是"系统的建议"。
+   和它上面那行「你注意到」必须一眼分得开，否则就成了两排按钮：
+     · 「你注意到」是**世界给的**（青色 --notice，可点开子菜单）
+     · 「我心里」是**自己脑子里冒的**（次级正文色，无边框无胶囊，点一下只是写进输入框）
+   颜色只做语义、不做装饰 —— 这层故意不用 --accent（强调色只留给唯一主操作），
+   也不和 --notice 同色（同色 = 玩家分不清哪句是世界的、哪句是自己的）。
+   底栏每多一行都在抢场景画的高度（见本文件 §底栏注释：底栏 172px 时场景被裁 2 行），
+   所以**没有念头时整行 display:none**，一点都不占。 */
+#thoughts { display:none; }
+#thoughts.has { display:flex; align-items:center; gap:var(--sp-4); flex-wrap:nowrap; overflow-x:auto; min-height:24px; margin-right:var(--sp-3); }
+#thoughts .th-h { flex:none; color:var(--fg-3); font-size:var(--fs-caption); letter-spacing:.08em; }
+#thoughts .th-i {
+  all:unset; cursor:pointer; flex:none;
+  font-size:var(--fs-caption); color:var(--fg-2);
+  padding:var(--sp-1) 2px; min-height:24px;
+  border-bottom:1px dashed transparent; transition:color var(--t-fast) var(--ease);
+}
+#thoughts .th-i:hover, #thoughts .th-i:focus-visible { color:var(--fg); border-bottom-color:var(--fg-3); }
+
 /* ⑤ 行动：两个轻量提示 + 输入 + 唯一主操作 */
 /* 轻提示与"你注意到"合到同一行：都是"入口级"信息，不该各占一行 */
 #quicktabs { display:flex; align-items:center; gap:var(--sp-3); margin:0; }

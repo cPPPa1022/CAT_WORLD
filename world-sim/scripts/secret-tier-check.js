@@ -18,7 +18,22 @@ const ok = (c, m) => { if (c) { pass++; console.log('  OK   ' + m); } else { fai
 console.log('');
 console.log('知识门控：秘密档必须可达（X2/X3）');
 
-const mk = () => { const d = buildDemoWorld(); if (!d.id) d.id = makeId; d.impressions = {}; d.knowledge.knownPeople = []; return d; };
+/* v3.3：mk() 的语义是"印象表一张白纸的玩家"，那么**玩家自己的认知也得是白的** ——
+   nameOf 现在会拿"经历/记忆里出现过这个名字"当已知证据（gate.js · adoptSelfNames），
+   而演示世界的玩家经历里点着阿岩和沈姨的名字。不挖掉的话，
+   下面"没有任何档 → secret"这类断言测的就不是印象表，而是玩家经历里写了谁。 */
+const stripAllSelfNames = (d) => {
+  const cut = (s, names) => { for (const n of names) s = s.split(n).join('某个人'); return s; };
+  const names = Object.values(d.entities).filter(e => e.type === 'person' && e.id !== 'player' && e.name).map(e => e.name);
+  const walk = (o, dep) => {
+    if (o == null || dep > 3 || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) { if (typeof o[k] === 'string') o[k] = cut(o[k], names); else walk(o[k], dep + 1); }
+  };
+  walk((d.entities.player || {}).profile, 0);
+  for (const m of Object.values(d.memories || {})) if (m && m.owner === 'player' && m.content) m.content = cut(m.content, names);
+  d._selfNameSig = null;
+};
+const mk = () => { const d = buildDemoWorld(); if (!d.id) d.id = makeId; d.impressions = {}; d.knowledge.knownPeople = []; stripAllSelfNames(d); return d; };
 
 // 1) 完全没有印象档 → secret
 {

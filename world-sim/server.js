@@ -18,7 +18,7 @@ const SCHED = require('./src/scheduler');
 const VIS = require('./src/visual');
 const CONTENT = require('./src/content');   // v1.61 内容模块槽位
 
-const BUILD = 'v2.08';
+const BUILD = 'v3.3';
 /* v1.84：存档 schema 版本。原来**世界数据零版本字段**，loadWorld 里 8 段"字段缺失就补"的迁移
    只能靠猜年代（ai.js 里还有一条用 timeoutMs===90000 猜年代的同类病）。现在：档里带版本，
    迁移有了明确边界，且迁移动作会进生成清单留痕（设计总稿 §26.3 要求"修复必须留痕"）。 */

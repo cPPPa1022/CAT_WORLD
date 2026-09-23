@@ -23,11 +23,27 @@ const ok = (c, m) => { if (c) { pass++; console.log('  OK   ' + m); } else { fai
 
 const newWorld = () => { const d = W.buildDemoWorld(); d.id = (p) => p + '_' + Math.random().toString(36).slice(2, 8); return d; };
 const npcsOf = (d) => Object.values(d.entities).filter(e => e.type === 'person' && e.id !== 'player');
-/* 把一个人变成"玩家从没见过"：删印象档、从 knownPeople 移除、清名字知识 */
+/* 把名字从**玩家自己的认知**里挖掉（经历 / owner=player 的记忆）。
+   ★ v3.3：名字的知识面多了一条 —— gate.nameOf 现在会把"玩家的经历/记忆里出现过这个名字"
+   当成已知的证据（见 gate.js · adoptSelfNames）。演示世界的玩家经历里就写着
+   「当着阿岩的面说沈姨"这店再这样撑不了几年"」，所以**只删印象档已经造不出
+   "玩家从没见过的人"了** —— 下面每一条断言的"不认识的人"都会当场变成"认识的人"。
+   （这不是把测试改绿：makeUnknown 的注释本来就写着"变成玩家从没见过"，原先只是少做了一半。） */
+const stripSelfName = (d, npc) => {
+  const cut = (s) => String(s == null ? '' : s).split(npc.name).join('某个人');
+  const walk = (o, dep) => {
+    if (o == null || dep > 3 || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) { if (typeof o[k] === 'string') o[k] = cut(o[k]); else walk(o[k], dep + 1); }
+  };
+  walk((d.entities.player || {}).profile, 0);
+  for (const m of Object.values(d.memories || {})) if (m && m.owner === 'player' && m.content) m.content = cut(m.content);
+  d._selfNameSig = null;   // 让 nameOf 的幂等戳失效，下一次调用会重新对齐
+};
 const makeUnknown = (d, npc) => {
   delete d.impressions[npc.id];
   d.knowledge = d.knowledge || {};
   d.knowledge.knownPeople = (d.knowledge.knownPeople || []).filter(id => id !== npc.id);
+  stripSelfName(d, npc);
 };
 const makeKnown = (d, npc, stage) => {
   d.impressions = d.impressions || {};
@@ -88,6 +104,7 @@ console.log('[D] E6 · 判据只有一把尺子（gate.nameOf）');
   const d = newWorld();
   const npc = npcsOf(d)[0];
   delete d.impressions[npc.id];
+  stripSelfName(d, npc);                                                       // v3.3：认知那一面也要挖掉
   d.knowledge.knownPeople = (d.knowledge.knownPeople || []).concat([npc.id]);   // 在 knownPeople 里，但没有印象档
   const nm = GATE.nameOf(d, npc.id);
   ok(nm === null, 'nameOf：没有印象档就判"不该知道"（即使他在 knownPeople 里）');

@@ -112,75 +112,13 @@
     return box;
   }
 
-  /* ② 焦点区：谁在场、说了什么。无卡片 —— 层次靠字号/亮度/留白，不靠色块 */
-  function focusArea(act, focusIds) {
-    const cast = ((V && V.cast) || []).filter(x => x && x.id !== 'player');
-    const box = h('div', 'bfocus');
-    if (!cast.length) {
-      box.appendChild(h('div', 'bempty', '（此刻没有别人在场）'));
-    }
-    for (const person of cast) {
-      const name = txt(person.name) || '？';
-      const isFocus = focusIds.indexOf(txt(person.id)) >= 0 || focusIds.indexOf(name) >= 0;
-      const mine = act.filter(bb => { const w = who(bb); return w && (w === name || w === txt(person.id)); });
-      const blk = h('div', 'bperson' + (isFocus ? ' focus' : ''));
-      const head = h('div', 'bname-row');
-      head.appendChild(h('span', 'bname', name));
-      /* 这里**不放 mood**。"烦躁/平静"是 TA 的内心状态，玩家看不见 ——
-         引擎自己的契约就写着"写可被感知的征候，不写情绪词"（ai.js:399）。
-         玩家能看见的那些征候，在同一条 beat 的小细节那一行里（动作/神态/声音）。 */
-      blk.appendChild(head);
-      let any = 0;
-      for (const bb of mine) {
-        const before = blk.childElementCount;
-        if (bb.type === 'dialogue') {
-          const s1 = cue('', '「' + txt(bb.text) + '」', 'said'); if (s1) blk.appendChild(s1);
-          const detail = [txt(bb.action), txt(bb.expression), txt(bb.voice)].filter(Boolean).join('　');
-          const c1 = cue('', detail, 'detail'); if (c1) blk.appendChild(c1);
-        } else if (bb.type === 'action') {
-          const a2 = cue('', bb.text, 'detail'); if (a2) blk.appendChild(a2);
-        } else {
-          /* 引擎契约外的旧类型（演示世界里阿岩那行 type:'bar'）把动作写在了台词括号里。
-             契约本来明令"不要再把动作塞进台词括号里"（ai.js:398-404），所以这里替它拆开：
-             前导（…）进小细节，剩下的才是台词。 */
-          let said2 = txt(bb.text);
-          let act2 = '';
-          const mm = said2.match(/^\s*[（(]([^）)]{1,60})[）)]\s*/);
-          if (mm) { act2 = mm[1]; said2 = said2.slice(mm[0].length); }
-          const o = cue('', '「' + said2 + '」', 'said'); if (o) blk.appendChild(o);
-          const d2 = cue('', act2, 'detail'); if (d2) blk.appendChild(d2);
-        }
-        if (blk.childElementCount > before) any++;
-      }
-      if (any) box.appendChild(blk);
-    }
-    return box.childElementCount ? box : null;
-  }
-
-  /* ③ 氛围区：环境 / 旁白 / 镇上在传 —— 最暗的一档，扫一眼 */
-  function ambientArea(act, focusIds) {
-    const box = h('div', 'bamb');
-    const latest = (type, n) => {
-      const out = [];
-      for (let i = act.length - 1; i >= 0 && out.length < (n || 1); i--) if (act[i].type === type) out.push(act[i]);
-      return out.reverse();
-    };
-    for (const bb of latest('ambient', 2)) { const r = cue('环境', bb.text); if (r) box.appendChild(r); }
-    for (const bb of latest('narration', 2)) { const r = cue('旁白', bb.text); if (r) box.appendChild(r); }
-    for (const bb of latest('outcome', 1)) { const r = cue('▸', bb.text, 'out'); if (r) box.appendChild(r); }
-    for (const bb of latest('reaction', 1)) { const r = cue('·', bb.text, 'react'); if (r) box.appendChild(r); }
-    /* 玩家也可能被 AI 点成主角（focus:['player']）—— 那一行就给同样的放大 */
-    const meFocus = focusIds.indexOf('player') >= 0 || focusIds.indexOf(txt(V && V.playerName)) >= 0;
-    for (const bb of latest('user-action', 1)) { const r = cue('你', bb.text, 'me' + (meFocus ? ' focus' : '')); if (r) box.appendChild(r); }
-    const items = [];
-    for (const n of ((V && V.news) || [])) items.push(n && (n.title || n.summary));
-    const ov = (V && V.overview) || {};
-    for (const n of (ov['近况'] || [])) items.push(n && n.title);
-    const uniq = [];
-    for (const it of items) { const s = txt(it); if (s && uniq.indexOf(s) < 0) uniq.push(s); }
-    if (uniq.length) { const r = cue('听说', uniq.slice(0, 3).join('　·　')); if (r) box.appendChild(r); }
-    return box.childElementCount ? box : null;
-  }
+  /* ② 焦点区 / ③ 氛围区（focusArea / ambientArea）**已删**（v3.3）。
+     它们是 v2.13 之前"按人聚合 + 折叠"那一版的渲染，v2.14 上了块流（oneBlock）之后
+     **全文再没有任何调用点**（renderBoard 只用 band / oneBlock / who）。留着它们的代价这次真撞上了：
+       · 里面**另有一份 outcome 的渲染**（cue('▸', bb.text, 'out')），和块流里那份不一致 ——
+         我这次修「结果行太暗」时，第一眼看的就是这一份，差点改在死码上。
+       · 它们引用的 .bfocus / .bamb / .bs.out 样式还挂在 board.css 里（同批删掉），
+         留着就是"屏幕上永远不出现、但永远有人维护"的第二套版式。 */
 
   /* ★ v2.14 **块流**（用户原话）：
      「每一个块生成好了就是**固定死了**的，不会再新增内容；接下来的块在下面继续做。」
@@ -206,7 +144,10 @@
       const detail = [txt(bb.action), txt(bb.expression), txt(bb.voice)].filter(Boolean).join('　');
       const c1 = cue('', detail, 'detail'); if (c1) blk.appendChild(c1);
     } else {
-      const a2 = cue('', txt(bb.text), 'detail'); if (a2) blk.appendChild(a2);
+      /* v3.3：**结果行不能再混进 detail**。.bs.detail 的颜色是 --fg-3，而 tokens.css 给
+         --fg-3 的注释是「极次要·纯装饰，不承载信息」—— 玩家动作的确定性结论
+         （「你买好了去临江的车票——30块」）是事实，不是装饰。它原来和"他皱了皱眉"同色同字号。 */
+      const a2 = cue('', txt(bb.text), t === 'outcome' ? 'out' : 'detail'); if (a2) blk.appendChild(a2);
     }
     return blk;
   }

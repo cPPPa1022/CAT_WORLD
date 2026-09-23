@@ -21,7 +21,10 @@ const RET = require('./retention');   // v1.87 统一留存策略（窗口大小
 const PHASE = require('./phase');     // v1.56 相位的确定性推进
 const BUS = require('./bus');         // v2.03 P0-6 收尾：新闻/候选的落库走总线（裁决点唯一）
 const K = require('./knowledge');     // v1.97 X8：新闻影响（时长/范围）的唯一解释点
-const VIS = require('./visual');      // v1.98 P0-3：占位串判据（"待发现"算不算标志物）的唯一来源
+const VIS = require('./visual');
+/* v3.3：游戏循环**原来一次都没引用过契约**（SUGGEST_LEN/SUGGEST_MAX 这两个上限长在 contract.js 里）。
+   门控和视图出口都要用它 —— 上限只有一个真源，不在这里写第二遍 24/6。 */
+const CONTRACT = require('./contract');      // v1.98 P0-3：占位串判据（"待发现"算不算标志物）的唯一来源
 
 /* v1.84：**删掉写死的地名表**（原来是演示世界的 PLACE_ALIAS：杂货铺→pl_1、家→pl_3…）。
    用户的规矩是"引擎只列能力、不列内容"（设计共识 §280），而这表既是世界内容，又会对导入世界误伤
@@ -1391,6 +1394,9 @@ async function runTurn(data, text, cfg, opts) {
       voice: b.voice || undefined, actor: b.actor || undefined
     });
   }
+  /* ★ v3.3 · 念头（suggestions）：**玩家的内在声音**。门控在 gateSuggestions() 里，
+     抽成具名函数是为了能离线断言（原来写成内联 IIFE，测试够不着它）。 */
+  data.current.suggestions = gateSuggestions(data, (out.frame && out.frame.suggestions) || out.suggestions || []);   // 顶层写法也收（模板放 frame 里，但模型偶尔会平铺）
   /* v3.0 · 镜头（focus）：**主次由 AI 定，不由代码的公式定**（用户 2026-09-19）。
      AI 可以给一个、给几个（几个人都重要是正常的）、也可以一个都不给（独处 / 环境在推动）。
      这里只做**合法性**：id 必须真实存在、且本回合真的出场过；不合法的丢掉。
@@ -1618,6 +1624,42 @@ function viewName(data, id) {
   try { ensureImp(data, id); } catch (e) { DEG.hit("game.js", e); }
   return GATE.nameOf(data, id);
 }
+/* ★ v3.3 · 念头门控：**玩家的内在声音，原料必须是玩家自己知道的**。
+   这是「不给建议，给观察」（设计纲领 §3 越权红线 3）在新功能上的唯一执行点 ——
+   用户要的"外置大脑"能成立，靠的就是它只用玩家**已有的认知**当原料。
+   逐条判、**逐条丢**（坏的那条丢，不整批丢），丢掉之后**不补**：
+   拿公式替玩家想，等于把"念头"变回"任务列表"。
+   判据全在确定性侧、全是查表（0 token、可离线断言）：
+     · 提到玩家还不认识的人的真名 → 丢（名字的尺子只有一把：viewName → gate.nameOf）
+     · 提到玩家没去过/不知道的地点名 → 丢
+     · 超过 SUGGEST_LEN 字 → 丢（念头是短的；长句子是旁白）
+     · 重复 → 丢；最多 SUGGEST_MAX 条
+   代码在这里**只做取舍，不生成念头**（AI 自由度三档：叙事侧给原料，确定性侧只裁决）。 */
+function gateSuggestions(data, raw) {
+  const arr = Array.isArray(raw) ? raw : [raw];
+  const K = data.knowledge || {};
+  const knownPlace = {};
+  for (const pid of (K.knownPlaces || []).concat(K.visited || [])) {
+    const e = (data.entities || {})[pid];
+    if (e && e.name) knownPlace[String(e.name)] = 1;
+  }
+  const kept = [];
+  for (const x of arr) {
+    const s = String(x == null ? '' : x).trim().replace(/\s+/g, ' ');
+    if (!s || s.length > CONTRACT.SUGGEST_LEN) continue;
+    if (kept.indexOf(s) >= 0) continue;
+    let leak = false;
+    for (const e of Object.values(data.entities || {})) {
+      if (!e || !e.name || s.indexOf(String(e.name)) < 0) continue;
+      if (e.type === 'person') { if (e.id !== 'player' && !viewName(data, e.id)) { leak = true; break; } }
+      else if (e.type === 'place') { if (!knownPlace[String(e.name)]) { leak = true; break; } }
+    }
+    if (leak) continue;
+    kept.push(s);
+    if (kept.length >= CONTRACT.SUGGEST_MAX) break;
+  }
+  return kept;
+}
 function updateImpressions(data, frame, updates) {
   const us = updates || [];
   for (const u of us) {
@@ -1805,6 +1847,8 @@ function buildViewRaw(data) {
     cast, unread: unread.length,
     /* v3.0：镜头（AI 定主次）。空数组 = 这一刻没有主次，界面不许自己挑一个。 */
     focus: ((data.current && data.current.focus) || []).slice(0, 3),
+    /* v3.3：玩家的念头（已经逐条门控过 —— 见 runTurn 里 data.current.suggestions 那一段） */
+    suggestions: ((data.current && data.current.suggestions) || []).slice(0, CONTRACT.SUGGEST_MAX),
     msgs, map: mapNodes, people, shop: storeItems, inventory: inv, news, overview,
     money: { currency: wallet.currency || '元', cash: wallet.cash || 0, digital: wallet.digital || 0, spent: wallet.spent || 0, earned: wallet.earned || 0 },
     sceneLog: (function () {
@@ -1841,8 +1885,19 @@ function buildViewRaw(data) {
           if (!v) return null;
           const ent = getEntity(data, v) || Object.values(data.entities).find(x => x.type === 'person' && x.name === v);
           if (ent && ent.type === 'person') return ent.id === 'player' ? '你' : (viewName(data, ent.id) || '？');
-          const resolved = resolveSpeaker(data, v);
-          return /^[a-z]+\d+$/.test(resolved) ? '？' : resolved;
+          /* ★ v3.3：查不到**人**的时候，原来这里走 resolveSpeaker 的兜底 —— 而它最后一行
+             就是 `return String(sid)`，原样放行。后果实测（.probe-leak.js）：
+             speaker:'张三丰'（世界里根本没有这个人）一路裸奔进玩家视图。
+             **一个字段就能把知识门控和「有主」一起绕过去** —— AI 想在屏幕上印谁的名字，
+             塞进 speaker 就行，不需要任何 Update、不需要锚、不需要人物出现。
+             现在只有两种出口：世界里的**人** -> 过名字门（viewName）；
+             世界里的**非人物实体**（组织/店铺）-> 照旧显示它的名字；
+             其余（世界里查不到的字符串）-> '？'（保留"有人在说话"，不保留那个名字）。
+             真实存档统计（4 个世界 / 31 条 speaker+actor）：100% 都能解析成人物实体，
+             所以这条收紧不改动任何现有存档的显示。 */
+          const other = getEntity(data, v) || Object.values(data.entities).find(x => x && x.name === v);
+          if (other) return String(other.name || '？');
+          return '？';
         };
         let item = l;
         const sp = l.speaker, ac = l.actor;
@@ -2321,7 +2376,14 @@ function buildReaction(data, updates) {
   const n = npc ? (GATE.nameOf(data, npc.id) || '那个人') : '对方';
   if (us.some(u => u.type === '关系变化')) return n + '心里记下了什么。';
   if (us.some(u => u.type === '情绪变化')) return n + '看起来松快了一些。';
-  if (us.some(u => u.type === '记忆新增')) return '这个世界记住了一件事。';
+  /* v3.3 删：原来这里是 return '这个世界记住了一件事。'
+     —— 三个问题叠在一句话里：
+       ① 它是**引擎腔**：说话的不是世界里的人，是系统在报账（"记忆"就是系统术语本身）；
+       ② 它**硬编码**：不管这回合记的是什么都印这一句，于是每回合的记忆新增都长得一模一样；
+       ③ 它没必要：玩家自己的记忆已经在认知层（「我」面板 · 你记得的）里看得见，
+          对方记下的事会在 TA 下一次的行为里体现出来 —— 那才是"世界给你的反应"。
+     reaction 这一档的语义是"**世界**回给你的那一句"（关系/情绪真的变了才有），
+     而"你记住了一件事"不是世界回给你的，是你自己脑子里的事。 */
   return '';
 }
 
@@ -2476,4 +2538,7 @@ function mergeDupPersons(data) {
   return merged;
 }
 
-module.exports = { buildDevView, buildViewRaw, autoImgNote, parseIntent, runTurn, sendMessage, readMessage, readNews, buildView, createDoc, knownDocs, docPublic, matchReadIntent, backfillDoc, startFx, openDocTurn, buildAffordances, advanceTutorial, buildReaction, resolveWakeTime, applyUpdates, mergeDupPersons, personKey, looksLikeSamePerson, recallCheck, resolveSpeaker, scrubSceneLog, mergeActorInto, genLook, genProfile, nineFilled, plainLook, sedimentDynamic, viewName };
+module.exports = { buildDevView, buildViewRaw, autoImgNote, parseIntent, runTurn, sendMessage, readMessage, readNews, buildView, createDoc, knownDocs, docPublic, matchReadIntent, backfillDoc, startFx, openDocTurn, buildAffordances, advanceTutorial, buildReaction, resolveWakeTime, applyUpdates, mergeDupPersons, personKey, looksLikeSamePerson, recallCheck, resolveSpeaker, scrubSceneLog, mergeActorInto, genLook, genProfile, nineFilled, plainLook, sedimentDynamic, viewName, gateSuggestions,
+  /* v3.3：采纳"玩家自己认知里的名字"这步长在 gate.nameOf 里（名字的尺子自己保证一致），
+     这里只是把它转出来给断言脚本用，不另开第二个执行点。 */
+  adoptSelfNames: GATE.adoptSelfNames };

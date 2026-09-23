@@ -18,6 +18,19 @@ const ok = (c, m) => { if (c) { pass++; console.log('  OK   ' + m); } else { fai
 /* 注意：JSON 往返会把 data.id 这个**函数**剥掉（framework-check 的 mk 里专门补了回来）。
    不补的话，任何走 ledgerPush 的路径都会以 "data.id is not a function" 静默失败 —— 我第一版就栽在这。 */
 const mk = () => { const d = JSON.parse(JSON.stringify(W.buildDemoWorld())); d.id = (p) => p + '_a' + Math.random().toString(36).slice(2, 7); d.current.turnN = 1; return d; };
+/* ★ v3.3：把名字从**玩家自己的认知**里挖掉 —— gate.nameOf 现在会拿
+   "经历/记忆里出现过这个名字"当已知证据（gate.js · adoptSelfNames）。
+   只 delete 印象档已经造不出"玩家从没见过的人"了（演示世界的玩家经历里就点着沈姨的名）。 */
+const stripSelfName = (d, npc) => {
+  const cut = (s) => String(s == null ? '' : s).split(npc.name).join('某个人');
+  const walk = (o, dep) => {
+    if (o == null || dep > 3 || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) { if (typeof o[k] === 'string') o[k] = cut(o[k]); else walk(o[k], dep + 1); }
+  };
+  walk((d.entities.player || {}).profile, 0);
+  for (const m of Object.values(d.memories || {})) if (m && m.owner === 'player' && m.content) m.content = cut(m.content);
+  d._selfNameSig = null;
+};
 const spawn = (extra) => Object.assign({
   type: '人物出现', target: 'npc_新面孔', relation: '陌生人',
   spawn: { name: '一个穿军装的年轻人', appearance: '靴子磨破了' },
@@ -123,6 +136,62 @@ console.log('[7] 「世界上游」这一类真的接通了（契约 <-> 执行�
   ok(applied === 1 && (d.beyond || []).length === n0 + 1, '★ 执行器能落库（beyond 多了一条）');
   ok(d.beyond[0] && d.beyond[0].cap === 2 && d.beyond[0].visible === 'secret', '默认 secret、cap 生效');
   ok((d.ledger || []).some(l => l.type === '世界上游'), '落账（可追溯）');
+}
+
+console.log('');
+console.log('[8] ★ v3.3 念头门控：**脑子里想的，不能超出玩家自己知道的**');
+{
+  const G = require('../src/game');
+  const d = mk();
+  const pid = Object.keys(d.entities).find(k => d.entities[k].type === 'person' && k !== 'player');
+  const pname = d.entities[pid].name;
+  delete (d.impressions || {})[pid];   // 玩家还不认识他：门控唯一的尺子 gate.nameOf 会给 null
+  stripSelfName(d, d.entities[pid]);
+  ok(G.viewName(d, pid) === null, '前置：此刻玩家确实不知道「' + pname + '」这个名字');
+
+  const out = G.gateSuggestions(d, ['要不要去问问' + pname + '', '天不早了，该往回走了']);
+  ok(out.indexOf('要不要去问问' + pname + '') < 0, '★ 念头里写了还不认识的人的真名 -> 那条被丢（否则界面替玩家剧透）');
+  ok(out.length === 1, '同批里没泄露的那条照常留下（**只丢坏的那条，不整批丢**）');
+
+  d.impressions[pid] = { stage: 2, nameKnown: pname, traits: [], notes: [], bonds: [], seen: '' };
+  ok(G.viewName(d, pid) === pname, '前置：印象到"知道名字"之后 viewName 给得出名字');
+  ok(G.gateSuggestions(d, ['要不要去问问' + pname + '']).length === 1, '★ 认得了的人就可以想（挡的是"玩家不知道"，不是"人名"）');
+
+  /* v3.3 硬化：nameKnown 写成 true（"看起来对"的错写法）时，不能把字面量 "true" 当人名。
+     这条是写上面那句夹具时真撞出来的 —— 契约是**人名字符串**，不是布尔。 */
+  d.impressions[pid] = { stage: 2, nameKnown: true, traits: [], notes: [], bonds: [], seen: '' };
+  ok(G.viewName(d, pid) === pname, '★ nameKnown 误写成 true -> 回落到实体真名，不会管人叫"true"');
+  ok(G.viewName(d, pid) !== 'true', '★ 反例：返回值不是字符串 "true"');
+}
+
+console.log('');
+console.log('[9] 念头是短的、有限的、**丢光了不补**的');
+{
+  const G = require('../src/game');
+  const C = require('../src/contract');
+  const d = mk();
+  ok(G.gateSuggestions(d, ['啊'.repeat(C.SUGGEST_LEN + 1)]).length === 0, '★ 超过 ' + C.SUGGEST_LEN + ' 字 -> 丢（长句子是旁白，不是念头）');
+  ok(G.gateSuggestions(d, ['出去走走']).length === 1, '短念头照常留下');
+  const many = ['念头一二三四五', '念头六七八九十', '念头甲乙丙丁戊', '念头子丑寅卯辰', '念头金木水火土', '念头风雨雷电云', '念头上下左右中', '念头东西南北中'];
+  const capped = G.gateSuggestions(d, many);
+  ok(capped.length === C.SUGGEST_MAX && C.SUGGEST_MAX === 6, '★ 最多 ' + C.SUGGEST_MAX + ' 条（AI 多给也不吃）');
+  ok(G.gateSuggestions(d, ['出去走走', '出去走走']).length === 1, '重复的念头只留一条');
+
+  const d2 = mk();
+  const pid2 = Object.keys(d2.entities).find(k => d2.entities[k].type === 'person' && k !== 'player');
+  const pn2 = d2.entities[pid2].name;
+  delete (d2.impressions || {})[pid2];
+  stripSelfName(d2, d2.entities[pid2]);
+  const leakAll = G.gateSuggestions(d2, ['问问' + pn2 + '', '找' + pn2 + '聊聊', '等' + pn2 + '回来', '给' + pn2 + '带个话']);
+  ok(leakAll.length === 0, '★ 全泄了 -> 返回空数组，**不补**（补一条 = 代码替玩家想，念头立刻退化成任务列表）');
+
+  const d3 = mk();
+  const qid = Object.keys(d3.entities).find(k => d3.entities[k].type === 'place'
+    && (d3.knowledge.visited || []).indexOf(k) < 0 && (d3.knowledge.knownPlaces || []).indexOf(k) < 0);
+  if (qid) {
+    const qn = d3.entities[qid].name;
+    ok(G.gateSuggestions(d3, ['去' + qn + '看看']).length === 0, '★ 提到玩家没去过、也不知道的地名（' + qn + '）-> 丢');
+  } else { ok(true, '（演示世界里没有"未知道的地点"可测，跳过）'); }
 }
 
 console.log('');

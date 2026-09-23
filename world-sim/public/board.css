@@ -23,12 +23,9 @@
 .brow-v { flex: 1; min-width: 0; color: var(--fg-3); font-size: var(--fs-caption); line-height: 1.9; }
 
 /* ── ② 焦点区：谁在场、说了什么。主角与配角差一档 ───────────────── */
-.bfocus { display: flex; flex-direction: column; gap: 24px; }
 .bname-row { display: flex; align-items: baseline; gap: 9px; margin-bottom: 6px; }
 .bname { font-size: 17px; font-weight: 500; color: var(--fg-2); letter-spacing: .02em; }
 .bperson.focus .bname { font-size: 21px; font-weight: 600; color: var(--accent); }
-.bmood { font-size: var(--fs-caption); color: var(--fg-3); }
-.bempty { color: var(--fg-3); font-size: var(--fs-meta); }
 
 /* 台词：配角 17px 次要亮，主角 20px 最亮（全屏最亮的一处） */
 .bs { display: flex; gap: 9px; margin: 4px 0; }
@@ -39,23 +36,11 @@
 .bs.detail .bs-v { font-size: var(--fs-meta); line-height: var(--lh-meta); color: var(--fg-3); }
 .bperson.focus .bs.detail .bs-v { color: var(--fg-2); }
 
-/* ── ③ 氛围区：环境 / 旁白 / 听说。全屏最暗的一档 ───────────────── */
-.bamb { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); }
-.bamb .bs-k { color: #3a3f4d; }
-.bamb .bs-v { font-size: var(--fs-caption); line-height: 1.8; color: var(--fg-3); }
-.bamb .bs.out .bs-v { color: var(--warn); }
-.bamb .bs.react .bs-v { color: var(--fg-3); }
-.bamb .bs.me .bs-v { color: var(--fg-2); }
-/* 玩家被 AI 点成主角时，给同样的放大（focus:['player']） */
-.bamb .bs.me.focus .bs-v { font-size: 20px; line-height: 34px; color: #f6f8fc; }
-.bamb .bs.me.focus .bs-k { color: var(--accent); }
-
-/* ── ④ 更早 ─────────────────────────────────────────────────────── */
-.bfold { margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--line); }
-.bfold-btn { all: unset; cursor: pointer; color: var(--fg-3); font-size: var(--fs-caption); padding: 4px 0; display: block; }
-.bfold-btn:hover { color: var(--fg-2); }
-.bfold-box { margin-top: 6px; max-height: 30vh; overflow-y: auto; }
-.bfl { color: var(--fg-3); font-size: var(--fs-meta); line-height: var(--lh-meta); padding: 2px 0; }
+/* ── v3.3 删掉的三段死版式 ─────────────────────────────────────
+   .bfocus（按人聚合的焦点区）、.bamb（氛围区）、.bfold / .bfl（「更早」折叠框）
+   对应的 JS（focusArea / ambientArea / 折叠框）在 v2.13–v2.14 换成顺序块流时就没人调用了。
+   它们不是「以后可能用得上」：**两套版式同时存在时，改的人会改错那一套**
+   —— 我这次修「结果行太暗」就差点改在死掉的 ambientArea 上。 */
 
 /* ── v2.14 块流：新增三样 ─────────────────────────────────────────
    用户原话：「每一个块生成好了就是固定的，接下来的块在下面继续做。」
@@ -68,3 +53,12 @@
 .bnarr.amb{ padding:3px 0; opacity:.72; font-size:13px; }
 /* 你的那一块：只换名字的颜色，不加底、不加框（主次靠位置与亮度，不靠色块） */
 .bperson.mine .bname{ color:var(--accent, #e6b45c); }
+
+/* ── v3.3 结果行（outcome）：玩家动作的**确定性结论**，引擎算出来的那一条 ──────
+   它以前走的是 .bs.detail —— 也就是 --fg-3，而 tokens.css 给 --fg-3 的定义是
+   「极次要·纯装饰，**不承载信息**」。于是「你买好了去临江的车票——30块」和
+   「他皱了皱眉」在屏幕上长得一模一样：引擎算出来的事实没有自己的层级。
+   现在自成一档：**正文色**（它是内容，不是元信息）+ 一条琥珀左边线
+   （语义色板里 --amber 的定义正是「玩家的痕迹」）。只加一条线，不加色块、不加底。 */
+.bperson.mine .bs.out { border-left:2px solid var(--amber, #d9a15e); padding-left:8px; }
+.bperson.mine .bs.out .bs-v { color:var(--fg, #c6cad8); font-size:var(--fs-ui, 15px); line-height:var(--lh-ui, 23px); }
