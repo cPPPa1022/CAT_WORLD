@@ -25,6 +25,11 @@ const T = [
   ['updatetypes-check.js', 'A', 30],   // v1.84：白名单 ⊆ 执行器 + 校验器四条
   ['degrade-check.js', 'A', 30],   // v1.86：静默降级的棘轮（只许减不许增）
   ['import-relations-check.js', 'A', 30],   // v2.06：关系网/身份档案/浅拷/清单守卫 —— 这一批"静默丢数据"各钉一根柱子
+  // v2.09：**「这些功能到底有没有被用过」**的尺子 —— 观察类（D），不参与红灯，
+  //        因为它量的是"产物"，在一份全新的临时数据根里本来就该全是 0。
+  //        手动跑（默认扫用户存档）：node scripts/reality-check.js
+  //        要它变红（当发布闸门）：node scripts/reality-check.js --assert
+  ['reality-check.js', 'D', 30],
   ['dist-check.js', 'A', 30],   // v2.06：**交付副本 == 源码**（漏同步 = 源码修好了、用户打开还是老样子，而全部断言全绿）
   ['name-gate-check.js', 'A', 30],   // v2.06：名字门控出口（P1-1 E1/E2/E5/E6/E7b —— 没见过的人的名字到不了玩家眼前）
   ['replay-check.js', 'A', 30],   // v1.86：账本重放对账
