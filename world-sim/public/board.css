@@ -16,7 +16,35 @@
 }
 .board { width: 100%; max-width: 1040px; margin: 0 auto; }
 
-/* ── ① 世界带：一行读数（处境）。最暗的一档，扫一眼就够 ─────────── */
+/* ── ① 当前状态简介（v3.20）：常驻在叙事流**之外** ───────────────
+   用户原话：「最上面的随身 去路 我 做成当前状态简介介绍（补齐需要的东西 这些东西不够）」
+            「这个是每回合都会自己更新吗」
+            「而且这个一直在最上面 每次想看的时候都要翻到最上面？」
+   所以它不再长在日志流的第一块（那样回合越多、它离屏幕越远），
+   而是 #layout 里的一个**固定条**：flex:0 0 auto —— 只有叙事流 #now 会滚。
+   层次仍然是最暗的一档（它是"处境"，不是"戏"）：扫一眼就够，别跟正文抢注意力。 */
+#layout.board #brief {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  padding: 12px 26px 0 !important;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(21,22,29,0) 0, var(--bg1) 70%);
+}
+#brief.hidden { display: none !important; }
+#brief .bband { max-width: 1040px; margin: 0 auto; padding-bottom: 8px; }
+/* 标题行（"现在"）兼作折叠开关：可点、有反馈，但仍然只是**元信息**的一档亮度。
+   键列从 34px 放到 46px：折叠箭头（▾/▸）+ 两个汉字在这个宽度里才排得下
+   —— 34px 时箭头会把"现在"挤成两行（实测截图里就是这么断的）。
+   46px 与叙事流里的 .bs-k（"台词/神情/动作"那一列）同宽，两处列线对齐。 */
+#brief .brow-k { flex: 0 0 46px; }
+#brief .brow-now { cursor: pointer; }
+#brief .bhead { color: #6b7186; user-select: none; }
+#brief .brow-now:hover .bhead { color: var(--accent); }
+#brief .bband.closed .bd { display: none; }
+/* 收起时，"现在"那一行要被当成"一行读数"读得下去 */
+#brief .bband.closed .brow-now .brow-v { color: var(--fg-3); }
+
+/* 旧位置（日志流第一块）保留同款样式，供 ?stream 之外的旧档兜底 */
 .bband { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
 .brow { display: flex; gap: 10px; align-items: baseline; }
 .brow-k { flex: 0 0 34px; color: #3f4453; font-size: var(--fs-caption); letter-spacing: .08em; user-select: none; }
@@ -29,12 +57,21 @@
 
 /* 台词：配角 17px 次要亮，主角 20px 最亮（全屏最亮的一处） */
 .bs { display: flex; gap: 9px; margin: 4px 0; }
-.bs-k { flex: 0 0 40px; color: #3f4453; font-size: var(--fs-caption); line-height: var(--lh-ui); letter-spacing: .04em; user-select: none; }
+/* ★ v3.5：标签槽原来写的是 #3f4453 —— 对底约 1.8:1，等于看不见。
+   `.bs-k` 是"这一行是什么"的唯一载体，把它提到 --fg-3（可见、但不抢戏）。
+   列宽从 40px 放到 46px：13px 的中文两字 + 字距正好卡在 40 里，会挤。 */
+.bs-k { flex: 0 0 46px; color: var(--fg-3, #7e849b); font-size: var(--fs-caption); line-height: var(--lh-ui); letter-spacing: .02em; user-select: none; }
 .bs-v { flex: 1; min-width: 0; }
-.bs.said .bs-v { font-size: var(--fs-ui); line-height: var(--lh-ui); color: var(--fg-2); }
+/* ★ v3.5 层次重排（用户：「颜色基本看不出差别」）。
+   改前：台词 --fg-2、旁白 --fg-2（**同色**）、动作 --fg-3（被定义成"纯装饰"）→ 全糊在一起。
+   现在四档各占一层，且**每一档都配了文字标签**：
+     台词 --fg（正文，80% 的内容用正文色）> 旁白/动作 --fg-2 > 环境 --fg-3 > 场景标签 --dim
+   焦点人物那一档（#f6f8fc / 20px）仍然是最亮的唯一一处，层次律不破。 */
+.bs.said .bs-v { font-size: var(--fs-ui); line-height: var(--lh-ui); color: var(--fg); }
 .bperson.focus .bs.said .bs-v { font-size: 20px; line-height: 34px; color: #f6f8fc; }
-.bs.detail .bs-v { font-size: var(--fs-meta); line-height: var(--lh-meta); color: var(--fg-3); }
-.bperson.focus .bs.detail .bs-v { color: var(--fg-2); }
+/* 动作/神情是**内容**，不是元信息 —— 原来用 --fg-3（"纯装饰，不承载信息"）是错的，提到 --fg-2。 */
+.bs.detail .bs-v { font-size: var(--fs-meta); line-height: var(--lh-meta); color: var(--fg-2); }
+.bperson.focus .bs.detail .bs-v { color: var(--fg); }
 
 /* ── v3.3 删掉的三段死版式 ─────────────────────────────────────
    .bfocus（按人聚合的焦点区）、.bamb（氛围区）、.bfold / .bfl（「更早」折叠框）
@@ -49,10 +86,16 @@
    这三条只管"看得出边界"，不引入任何卡片底色（v4 那条层次律不破）。 */
 .bstage{ margin:16px 0 6px; padding-top:10px; border-top:1px solid var(--line, rgba(255,255,255,.10));
   color:var(--dim, #7b8494); font-size:12px; letter-spacing:.06em; }
-.bnarr{ padding:5px 0; color:var(--fg-2, #c8cdd8); }
-.bnarr.amb{ padding:3px 0; opacity:.72; font-size:13px; }
+/* 旁白＝镜头（"画面里发生的事"）。原来它和台词**同色同字号**（都是 --fg-2 / 继承 15px），
+   唯一的区别是台词上面多一行名字 —— 名字一弱就分不出来。现在：标签「旁白」+ 明确字号 + 降一档亮度。 */
+.bnarr{ padding:5px 0; color:var(--fg-2, #a8aec2); }
+.bnarr.amb{ padding:3px 0; opacity:.86; }
+.bs.narr .bs-v{ font-size:var(--fs-ui); line-height:var(--lh-ui); color:var(--fg-2, #a8aec2); }
+.bs.narr.amb .bs-v{ font-size:13px; line-height:1.7; color:var(--fg-3, #7e849b); }
 /* 你的那一块：只换名字的颜色，不加底、不加框（主次靠位置与亮度，不靠色块） */
 .bperson.mine .bname{ color:var(--accent, #e6b45c); }
+/* 玩家自己写的那句话也是内容（原来跟着 .bs.detail 一起掉到 --fg-3 那一档） */
+.bperson.mine .bs.detail .bs-v{ color:var(--fg-2, #a8aec2); }
 
 /* ── v3.3 结果行（outcome）：玩家动作的**确定性结论**，引擎算出来的那一条 ──────
    它以前走的是 .bs.detail —— 也就是 --fg-3，而 tokens.css 给 --fg-3 的定义是

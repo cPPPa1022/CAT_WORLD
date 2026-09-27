@@ -164,11 +164,40 @@ function execute(data, patch, out, ctx) {
     } catch (e2) { DEG.hit('bus.js', e2); }
   }
 }
+/* ★ v3.5 · 事务性快照（`allOrNone` 用）—— 覆盖范围比上面那个单补丁的 snapshot 大：
+   单补丁快照只管"这一个补丁碰过的表"，而"整批回滚"要管**这一批可能碰过的所有表**。
+   ⚠️ 只快照**存档数据**（不含 `data.id` 这类函数字段，也不含 process 级状态）——
+      还原是按 key 赋回，函数字段不动。 */
+const ALL_KEYS = ['entities', 'relations', 'impressions', 'customActions', 'current', 'news',
+  'memories', 'messages', 'archives', 'sceneLog', 'framework', 'knowledge'];
+function snapshotAll(data) {
+  const snap = { __ledgerLen: (data.ledger || []).length };
+  for (const k of ALL_KEYS) snap[k] = (data[k] === undefined) ? undefined : JSON.parse(JSON.stringify(data[k]));
+  return snap;
+}
+function restoreAll(data, snap) {
+  for (const k of ALL_KEYS) if (snap[k] !== undefined) data[k] = snap[k];
+  if (Array.isArray(data.ledger) && snap.__ledgerLen != null) data.ledger = data.ledger.slice(0, snap.__ledgerLen);
+}
+
 /* ── 对外唯一入口 ──
    commit(data, proposals, ctx) → { id, committed[], rejected[], clockDelta, ledgerIds[] }
    · 每个补丁独立判、独立执行：一个坏不连累别人（但**它自己一个字段都不许落地**）
-   · update 类走 applyUpdates（懒加载，避免 require 环） */
+   · update 类走 applyUpdates（懒加载，避免 require 环）
+
+   ★ v3.5 · `ctx.allOrNone` —— **全有或全无**（用户：「最后全部写完之后再检查一遍 没问题就应用」）
+   为什么必须做：默认是**部分生效**（坏的跳过、好的照写）。权限小的时候还行；
+   **权限大的时候"部分生效"是最坏的结果** —— 世界建到一半、工具装了一半，
+   既不知道该回滚到哪，也没法重跑（`done()` 已经把门签上了）。
+
+   为什么**按调用方选择**、不全局改：主 AI 每回合的 updates 是"世界往前走的步子"，
+   一条不合法就整批不生效 = **世界卡住不前进** —— 那种降级比"少落一条"坏得多。
+   所以：一次性大批量的场景（第三步开局编译 / 框架创造）用全有或全无；
+   逐回合推进的场景保持部分生效。 */
 function commit(data, proposals, ctx) {
+  const o = ctx || {};
+  const all = !!o.allOrNone;
+  const snapAll = all ? snapshotAll(data) : null;
   const out = { id: nextCommitId(), committed: [], rejected: [], clockDelta: 0, ledgerIds: [] };
   const batch = { ids: {} };
   for (const p of (proposals || [])) {
@@ -219,6 +248,28 @@ function commit(data, proposals, ctx) {
       if (snap) restore(data, snap);
       out.rejected.push({ stage: 'execute', code: 'commit_failed', what: String((patch.ent && patch.ent.id) || ''), why: String((e && e.message) || e).slice(0, 80) });
       DEG.hit('bus.js', e);
+    }
+  }
+  /* ★ 事务性收口（`ctx.allOrNone`）：一处不过 ⇒ **整批不写**，并说清为什么。
+     报错原因是**代码层级、0 token** —— 直接取自 rejected / errors（用户点名的要求）。
+
+     ⚠️ 判据**不能只看 `out.rejected`** —— 一条 update 批次里的**部分失败不会**进 out.rejected，
+        它落在 `committed[i].errors` 里（applyUpdates 只落 `allowed` 的那些，`vu.errors` 记在返回里）。
+        **第一版就漏了这个，于是"全有或全无"静默失效**（实测：rolledBack 是 undefined、存档真被改了）。
+        这正是这次要消灭的那种"静默" —— 一个看起来做了、实际没做的事。 */
+  if (all) {
+    const innerErrs = out.committed.reduce((a, c) => a.concat((c && Array.isArray(c.errors)) ? c.errors : []), []);
+    if (out.rejected.length || innerErrs.length) {
+      restoreAll(data, snapAll);
+      out.rolledBack = true;
+      out.rolledBackN = out.committed.length;
+      out.rolledBackWhy = out.rejected.slice(0, 2)
+        .map(x => String((x && (x.code || x.why)) || '?') + ((x && x.what) ? (':' + x.what) : ''))
+        .concat(innerErrs.slice(0, 2))
+        .join(' / ');
+      out.committed = [];
+      out.ledgerIds = [];
+      out.clockDelta = 0;
     }
   }
   return out;

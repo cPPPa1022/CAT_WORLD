@@ -63,7 +63,7 @@ const PRESET = {
 
 // ---------- 时代演算 AI 提示（接入模式：自由节点，AI 定义事件的触发时间/条件） ----------
 function epochSystem() {
-  return [
+  return AI.withCharter([
     '你是【世界模拟器】的世界演算 AI。每年一算：给出"下一年会发生什么"的计划。你的世界是一座中国小镇（九十年代末起）——让它自然地随时间变化：技术、观念、人口、天灾人祸，都按你判断的"真实节奏"来。',
     '输出 JSON（不要多余文字）：',
     '{',
@@ -73,7 +73,7 @@ function epochSystem() {
     '}',
     '【规则】事件必须给出明确的触发时间/条件（插件按此调度，条件不满足则延后）；重大事件要前兆（2026 没有"天降外星人"）；tech 是"当年市面上出现的东西"，价格要符合年代；每年 1~5 条事件，1~2 件 tech。没有大事的年份，给 1 条生活琐事即可。禁止虚构玩家本人。',
     '【人事】type:person 用于人与人的命运变化：老态/体弱/交代（人物状态自然演变，逐年前兆：先老态再体弱再交代，至少隔2年）→ 离世（寿终或病故，必须走完前兆链）或 意外（车祸/案件——意外可以突然，但必须有因：谁的车、哪条街、为什么；意外事件与玩家有关联时要留线索）。离世人物之后不再开口/不在场，但可被提起。'
-  ].join('\n');
+  ].join('\n'));
 }
 
 // 生成"下一年"计划（live=AI；demo=PRESET 命中或补白）
@@ -84,7 +84,7 @@ async function evolvePlan(data, cfg, year) {
       const out = await AI.llmJSONDeep(cfg, [
         { role: 'system', content: epochSystem() },
         { role: 'user', content: '当前：' + (cur.eraLabel || cur.era || '九十年代末的中国小镇') + '（年份：' + year + '）。计划下一年：' + (year + 1) + '。' }
-      ], () => presetPlan(data, year), Math.min(2048, AI.cfgMax(cfg)));
+      ], () => presetPlan(data, year), AI.cfgMax(cfg));
       if (out && out.__fallback) return out.value;
       if (out && out.year == year + 1) return out;
       if (out && out.year == null && (out.tech || out.events)) return Object.assign({ year: year + 1 }, out);
@@ -147,7 +147,7 @@ function pagePersonLifecycle(data, nowISO) {
       }
       ledgerPush(data, { t: at, type: '人事', target: who, desc: who + '『' + stage + '』' + noteTxt, cause: stage === '离世' ? '寿终正寝' : null });
       data.sceneLog = data.sceneLog || [];
-      data.sceneLog.push({ t: at, type: 'ambient', text: '【人事】' + noteTxt });
+      data.sceneLog.push({ t: at, turn: (data.current && data.current.turnN) || 0, type: 'ambient', text: '【人事】' + noteTxt });
       out.push('人事：' + noteTxt);
     }
   }
@@ -260,7 +260,7 @@ function settle(data, nowISO) {
         }
         if (noteTxt) {
           ledgerPush(data, { t: t, type: '人事', target: who, desc: who + '『' + (e.what || '人事') + '』' + noteTxt, cause: e.cause || null });
-          data.sceneLog.push({ t: t, type: 'ambient', text: '【人事】' + noteTxt });
+          data.sceneLog.push({ t: t, turn: (data.current && data.current.turnN) || 0, type: 'ambient', text: '【人事】' + noteTxt });
           out.push('人事：' + noteTxt);
         }
       }
@@ -271,7 +271,7 @@ function settle(data, nowISO) {
       out.push('有件小事发生：' + e.title);
     } else {
       data.sceneLog = data.sceneLog || [];
-      data.sceneLog.push({ t: e.at, type: 'ambient', text: '【世界变化】' + e.summary || e.title });
+      data.sceneLog.push({ t: e.at, turn: (data.current && data.current.turnN) || 0, type: 'ambient', text: '【世界变化】' + e.summary || e.title });
       out.push('世界变化：' + e.title);
     }
   }
@@ -313,11 +313,11 @@ function poolSummon(req, nowISO) {
   return { pre: { at: preAt, title: pick.pre, summary: pick.pre }, main: { at: mainAt, title: pick.main, summary: pick.main, type: pick.mainKind, condition: 'always' } };
 }
 function epochSummonSystem() {
-  return [
+  return AI.withCharter([
     '你是【世界模拟器】的事件链生成器（AI-a）。主 AI 判断当前场景需要一件事发生，把你的任务发给：' + String((arguments[0] || {}).need || ''),
     '你的产出：一条完整事件链——从早期预兆（看到的人多、能被新闻写到）到主体事件（触发时间/条件），全部事件彼此因果，禁止凭空、禁止暴力。',
     '输出 JSON：{ "pre": {"at":"YYYY-MM-DDTHH:MM:00(预兆时刻,在主体前3-20天)","title":"预兆标题","summary":"一句话"}, "main": {"at":"YYYY-MM-DDTHH:MM:00","title":"事件标题","summary":"一句话","type":"news|cand|event","condition":"always|money:N|era:N|npc:id"} }'
-  ].join('\n');
+  ].join('\n'));
 }
 async function summonChain(data, cfg, req) {
   if (!summonDue(data, req)) return null;
@@ -328,7 +328,7 @@ async function summonChain(data, cfg, req) {
       const out = await AI.llmJSONDeep(cfg, [
         { role: 'system', content: epochSummonSystem() },
         { role: 'user', content: JSON.stringify({ 需求: req, 时代: (data.meta && data.meta.eraLabel) || (data.meta && data.meta.era) || '', 在场主要人物: Object.values(data.entities).filter(x => x.type === 'person' && x.id !== 'player').slice(0, 5).map(x => x.name) }) }
-      ], () => poolSummon(req, data.current.time), Math.min(1536, AI.cfgMax(cfg)));
+      ], () => poolSummon(req, data.current.time), AI.cfgMax(cfg));
       if (out && out.__fallback) chain = out.value;
       else if (out && out.pre && out.main) chain = { pre: out.pre, main: out.main };
     } catch (e) { DEG.hit("epoch.js", e); }

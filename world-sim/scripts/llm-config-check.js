@@ -78,11 +78,114 @@ const ok = (c, m) => { c ? (pass++, console.log('  ✔', m)) : (fail++, console.
   ok(aiSrc.indexOf('readJson(f)') >= 0, 'loadConfig 用 readJson（不再裸 JSON.parse）');
 }
 
-// [4] 主叙事出口必须有足够大的上限（8192 装不下一整个长回合）
+// [4] ★ 输出上限**只由设置决定**：src/ 里不许有任何 `Math.min(数字, cfgMax(...))` 硬帽子
+/* 2026-09-26 用户原话：「扫描的时候为什么要设置限制？最大输出token数全部设置为不设限制。」
+   这条原来是「主叙事通道的 Math.min 数字必须 ≥ 32768」—— **同一个意图，但当年是用硬帽子表达的**。
+   硬帽子刚出过一次真事故：用户设置里填的是 384K，而建档第 1 步写的是 `Math.min(8192, cfgMax)`，
+   实际只拿到 8192；而 8192 **正好是"非思考模式"的官方默认值**（思考模式默认 64K）——
+   于是 8192 token 全被思考吃光、正文 0 字、finish_reason=length。
+   现在守**更强的那件事**：一个硬帽子都不许有，上限一律来自 cfgMax。 */
+/* ★ 扫之前必须**先去注释** —— 否则"注释里描述旧代码的那句话"会被当成旧代码。
+   这条不是假想：第一版就死在 ai.js:84，命中的是我自己写的注释
+   `· 而建档第 1 步写的是 Math.min(8192, cfgMax(cfg)) ⇒ …`。
+   同一个坑在 charter-check 里踩过一次（注释被算成"调用点"）。
+   实现要点：注释内容替换成**等长空格**（保留换行）⇒ **行号不变**，报错才能定位。
+   （[4] 与 [4b] 共用，所以提到块外面。） */
+const stripComments = (s) => s
+  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+  .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+
 {
+  const SRC = path.join(ROOT, 'src');
+  const bad = [];
+  for (const f of fs.readdirSync(SRC)) {
+    if (!f.endsWith('.js')) continue;
+    const raw = fs.readFileSync(path.join(SRC, f), 'utf8');
+    const s = stripComments(raw);
+    for (const m of s.matchAll(/Math\.min\(\d+,\s*(?:AI\.)?cfgMax\(/g)) {
+      bad.push(f + ':' + (s.slice(0, m.index).split('\n').length) + ' 「' + m[0] + '」');
+    }
+  }
+  ok(bad.length === 0, 'src/ 里没有输出上限硬帽子（实测 ' + (bad.length ? bad.join(' / ') : '一个都没有') + '）');
+
   const g = fs.readFileSync(path.join(ROOT, 'src', 'game.js'), 'utf8');
-  const caps = [...g.matchAll(/Math\.min\((\d+), AI\.cfgMax\(cfg\)\)/g)].map(m => Number(m[1]));
-  ok(caps.length > 0 && caps.every(c => c >= 32768), '主叙事通道的上限 ≥ 32768（实测 ' + JSON.stringify([...new Set(caps)]) + '）');
+  ok(g.indexOf('AI.cfgMax(cfg)') >= 0, '主叙事通道的上限来自 cfgMax（= 设置里那个值）');
+
+  const ai = fs.readFileSync(path.join(ROOT, 'src', 'ai.js'), 'utf8');
+  ok(/function cfgMax\(c\)[^\n]*c\.llm\.maxTokens/.test(ai), 'cfgMax 仍是唯一真相源（读设置里的 maxTokens）');
+  /* 「不设 ≠ 无限」这条坑必须留在代码里 —— 省掉字段拿到的是 8K/64K，比显式 384K 小得多。
+     所以"不限"的正确写法是**显式写满**，不是删字段。 */
+  ok(ai.indexOf('不设 max_tokens') >= 0, '注释里留了「不设 max_tokens ≠ 无限」这条坑（未来的人别踩）');
+}
+
+// [4b] ★ 换一个口径：**逐个调用点解析实参表**，看上限那个参数长什么样
+/* 为什么 [4] 不够 —— 它抓的是 `Math.min(数字, cfgMax(...))` 这一种**形态**。
+   第一版就是那个口径，于是漏掉了两处**直接传字面数字**的：
+     · `game.js:2210`  `AI.llmJSON(…, {}, 900, null, 'none')`      ← 长相档案，只有 900
+     · `repair.js:147` `AI.llmJSON(…, () => ({…}), 8192, …)`       ← 存档修复员
+   而 **repair.js 连最初的 grep 都没进网** —— 它整个文件里没有 cfgMax / maxTokens / max_tokens
+   任何一个字样。⇒ 教训：**扫"形态"永远会漏，得扫"实参"**。
+   ⚠️ 上限的位置**因函数而异**（`llmText` 是第 3 个、`llmJSON` 是第 4 个）——
+      第一版统一按第 4 个取，于是把 `llmText(…, cfgMax, onDelta)` 的 `onDelta`
+      当成了上限，报了个**假警**。这也是为什么下面要把位置写成表。 */
+{
+  const MT_POS = { llmText: 2, llmOnceFull: 2, llmOnce: 2, llmJSON: 3, llmJSONDeep: 3 };
+  const SRC = path.join(ROOT, 'src');
+
+  /* s[from] 必须是 '('；返回括号**内部**的原文（按括号与引号配平，别被字符串里的 ) 骗了） */
+  const parenBody = (s, from) => {
+    let depth = 0, q = '';
+    for (let i = from; i < s.length; i++) {
+      const c = s[i];
+      if (q) { if (c === '\\') i++; else if (c === q) q = ''; continue; }
+      if (c === "'" || c === '"' || c === '`') { q = c; continue; }
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) return s.slice(from + 1, i); }
+    }
+    return '';
+  };
+  /* 顶层逗号切分：括号/方括号/花括号里与引号里的逗号都不算分隔 */
+  const splitArgs = (raw) => {
+    const out = []; let d = 0, q = '', cur = '';
+    for (let k = 0; k < raw.length; k++) {
+      const c = raw[k];
+      if (q) { cur += c; if (c === '\\') { cur += raw[++k] || ''; } else if (c === q) q = ''; continue; }
+      if (c === "'" || c === '"' || c === '`') { q = c; cur += c; continue; }
+      if (c === '(' || c === '[' || c === '{') d++;
+      if (c === ')' || c === ']' || c === '}') d--;
+      if (c === ',' && d === 0) { out.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+
+  const rows = [];
+  for (const f of fs.readdirSync(SRC)) {
+    if (!f.endsWith('.js')) continue;
+    const s = stripComments(fs.readFileSync(path.join(SRC, f), 'utf8'));
+    for (const m of s.matchAll(/AI\.(llmJSONDeep|llmJSON|llmText|llmOnceFull|llmOnce)\s*\(/g)) {
+      const parts = splitArgs(parenBody(s, m.index + m[0].length - 1));
+      const raw = parts[MT_POS[m[1]]];
+      rows.push({
+        at: f + ':' + (s.slice(0, m.index).split('\n').length),
+        mt: raw === undefined ? '(缺省)' : raw.replace(/\s+/g, ' ')
+      });
+    }
+  }
+  /* ★ 先守"扫描器自己没瞎" —— 抓不到调用点时，下面的断言会**全绿地骗人** */
+  ok(rows.length >= 25, '逐个解析到 ' + rows.length + ' 个 AI.llm* 调用点（<25 说明扫描器没抓到，不是"没问题"）');
+
+  const bad = rows.filter(r => /^\d+$/.test(r.mt));
+  ok(bad.length === 0, '没有一个调用点把上限写成字面数字' +
+    (bad.length ? '：\n' + bad.map(b => '         ★ ' + b.at + '  上限=' + b.mt).join('\n') : ''));
+
+  const weird = rows.filter(r => !/cfgMax/.test(r.mt) && r.mt !== 'undefined' && r.mt !== '(缺省)');
+  ok(weird.length === 0, '每个调用点要么显式 cfgMax、要么走缺省（缺省最终也落到 cfgMax）' +
+    (weird.length ? '：' + JSON.stringify(weird.map(r => r.at + '=' + r.mt)) : ''));
+
+  const explicit = rows.filter(r => /cfgMax/.test(r.mt)).length;
+  console.log('       （' + explicit + ' 个显式 cfgMax · ' + (rows.length - explicit) + ' 个走缺省 ⇒ 上限一律由设置决定）');
 }
 
 // [5] 设置界面不能写着和代码不一致的值（旧版界面占位符写 32768，代码却夹 65536）

@@ -20,7 +20,8 @@ function buildDemoWorld() {
     },
     current: { time: now, weather: '小雨', sceneId: 'pl_1', pendingDecisions: [], weatherSeen: true, device: { name: '大哥大', icon: '📟', apps: ['sms', 'contacts'] } },
     claims: [],
-    entities: {}, memories: {}, messages: [], news: [], ledger: [],
+    accounts: [],   // v3.20 钱与账：欠着谁 / 谁欠你（AI 只提议，数字由引擎落）
+    entities: {}, memories: {}, news: [], ledger: [], messages: [],
     relations: {},
     knowledge: { visited: ['pl_1'], knownPlaces: ['pl_1', 'pl_2', 'pl_3', 'pl_4', 'pl_5'], knownPeople: ['npc_1', 'npc_2'], phoneContacts: ['npc_1'], readMsgs: [], heardNews: ['n_1'], knownDocs: ['doc_note1'] },
     archives: {}, autoId: 1

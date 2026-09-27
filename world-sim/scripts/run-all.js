@@ -54,6 +54,13 @@ const T = [
   ['bus-check.js', 'A', 60],   // v2.01：世界写入总线（P0-6 —— 生成器只产出提议 + news/候选也走它）
   ['memory-depth-check.js', 'A', 30],   // v2.04：记忆深度一套算法（P1-2 —— 检索真的会忘 / 激活真的会牢）
   ['contract-check.js', 'A', 30],   // S0：契约单一真源（白名单 <=> 执行器 <=> 提示词，三处一致）
+  /* v3.20：钱与账（用户实测 OOC：「转钱 不够明显吗 2020年没有微信吗」）——
+     白名单两种新类型 / 资料包里的钱包 / 校验器的余额门 / 执行器真的扣钱 / 状态简介看得见。 */
+  ['money-account-check.js', 'A', 60],
+  /* v3.18–v3.19 那批脚本原来只写在交接文档 §8、**没登记进这张表** ——
+     没登记的脚本在日常回归里根本不会跑到（v1.99 就为这件事记过一笔）。这次一并补上。 */
+  ['frame-lifecycle-check.js', 'A', 60], ['story-flow-check.js', 'A', 60],
+  ['turn-stamp-check.js', 'A', 30], ['opening-picker-check.js', 'A', 60],
   ['context-order-check.js', 'A', 30],   // S1：资料包键序（稳定字段必须在前 —— 前缀缓存）
   ['context-cache-check.js', 'A', 60],   // S1：前缀缓存不变量（system 逐字节稳定 / 模块说明随资料包 / 计量口径）
   ['player-contract-check.js', 'A', 60],   // v1.90 玩家侧契约（结果行交付 / beat 槽位不拍平 / 悬着的事第二投影与门控）

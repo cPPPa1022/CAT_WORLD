@@ -20,6 +20,7 @@ const GATE = require('./gate');
 const RET = require('./retention');   // v1.87 统一留存策略（窗口大小一处定义）       // v1.56 输出侧门控 + 冲突检查
 const PHASE = require('./phase');     // v1.56 相位的确定性推进
 const BUS = require('./bus');         // v2.03 P0-6 收尾：新闻/候选的落库走总线（裁决点唯一）
+const ACC = require('./accounts');    // v3.20 钱与账：金额归一 + 找账（与校验器同一套判据）
 const K = require('./knowledge');     // v1.97 X8：新闻影响（时长/范围）的唯一解释点
 const VIS = require('./visual');
 /* v3.3：游戏循环**原来一次都没引用过契约**（SUGGEST_LEN/SUGGEST_MAX 这两个上限长在 contract.js 里）。
@@ -281,7 +282,7 @@ function openDocTurn(data, doc, text) {
   const isBook = /册|账本|名录|册子/.test(String(doc.title || '') + String(doc.kind || ''));
   startFx(data, FX.specOf([isBook ? { k: 'turn' } : { k: 'unfold' }], isBook ? '翻页' : '展信', '玩家打开文书'));
   data.sceneLog = data.sceneLog || [];
-  data.sceneLog.push({ t: now, type: 'action', text: '你打开了「' + String(doc.title || '').slice(0, 30) + '」' });
+  data.sceneLog.push({ t: now, turn: data.current.turnN || 0, type: 'action', text: '你打开了「' + String(doc.title || '').slice(0, 30) + '」' });
   // v1.87：场景日志的窗口大小来自**统一策略表**（原来三处各写死 200）
   try { REC.archiveSpill(data, RET.CAPS.sceneLog); } catch (e) { DEG.hit("game.js", e); if (data.sceneLog.length > RET.CAPS.sceneLog) data.sceneLog = data.sceneLog.slice(-RET.CAPS.sceneLog); }
   ledgerPush(data, { t: now, type: '文档阅读', target: 'player', desc: String(doc.title || '').slice(0, 40), ref: doc.id });
@@ -304,7 +305,7 @@ function noDocTurn(data, text, want, ask) {
   view.reaction = '（你翻了翻，手上没有' + w + '——世界给过你的文书都会收进「信匣」，那里可以翻。）';
   try { REC.recordTurn(data, { t: now, turn: data.current.turnN, sceneId: data.current.sceneId, kind: 'read', action: text, opLog: '你找了找，没有可打开的' + (want || '文书'), places: [data.current.sceneId] }); } catch (e) { DEG.hit("game.js", e); }
   data.sceneLog = data.sceneLog || [];
-  data.sceneLog.push({ t: now, type: 'action', text: '你找了一遍，没有可打开的' + (want || '文书') });
+  data.sceneLog.push({ t: now, turn: data.current.turnN || 0, type: 'action', text: '你找了一遍，没有可打开的' + (want || '文书') });
   // v1.87：场景日志的窗口大小来自**统一策略表**（原来三处各写死 200）
   try { REC.archiveSpill(data, RET.CAPS.sceneLog); } catch (e) { DEG.hit("game.js", e); if (data.sceneLog.length > RET.CAPS.sceneLog) data.sceneLog = data.sceneLog.slice(-RET.CAPS.sceneLog); }
   return { intent: { kind: 'read', docId: null, want: want || '' }, frame: null, errors: [], applied: 0, fresh: { kind: 'read' }, recalled: [], view: view };
@@ -333,6 +334,96 @@ function tryEarn(data, price, what) {
   if (!w) return { value: price };
   w.cash += price; w.earned += price;
   return { value: price };
+}
+
+/* ---------- ★ v3.20 钱与账：AI 只提议，这里真的改世界 ----------
+   为什么非要有这一段（用户实测）：「我说的是给房东先把欠的房租和这个月的房租转过去 转钱 不够明显吗？
+   2020年没有微信吗？不能转钱吗？」—— 那一局 AI **没有任何办法**把钱转出去：
+   UPDATE_TYPES 里没有钱的类型，applyUpdates 里也没有钱的分支，而资料包里连钱包都没有。
+   于是它只能演一个"没转成"的转账：打开 App、输金额、拇指悬在「确认」上，然后被敲门打断。
+   这里补的就是那条路：**AI 提议（方向/金额/给谁/为什么）→ 引擎按"先电子后现金"扣 →
+   账本留痕 → 结清对应的账**。余额永远只有一处算（tryPay/tryEarn），AI 侧只读。 */
+function accNameOf(data, id) {
+  const e = getEntity(data, id);
+  if (e && e.name) return String(e.name);
+  return id ? String(id) : '';
+}
+function settleAccount(data, acc, nowIso, cause) {
+  if (!acc || acc.status === 'settled') return false;
+  acc.status = 'settled';
+  acc.settledAt = nowIso;
+  acc.settledTurn = (data.current && data.current.turnN) || 0;
+  ledgerPush(data, { t: nowIso, type: '账目结清', target: acc.who, desc: '结清：' + (acc.name || acc.who) + ' 的 ' + (acc.amount || 0) + (acc.currency || '元') + '（' + (acc.what || '') + '）',
+    cause: cause || null, scene: data.current.sceneId, d: { acc: acc.id, amount: acc.amount, what: acc.what } });
+  return true;
+}
+// 记一笔账（欠别人 / 别人欠你）。数字由这一次记下，之后只引用。
+function applyAccount(data, u, nowIso) {
+  const list = ACC.ensure(data);
+  const op = String((u && u.op) || '记').trim();
+  if (/清|销|还清|结/.test(op)) {
+    const acc = ACC.find(data, u);
+    if (!acc) {
+      ledgerPush(data, { t: nowIso, type: '账目拒绝', target: String((u && (u.who || u.target)) || 'player'), desc: '想结清一笔账，但账上没有这一条', cause: (u && u.cause) || null, scene: data.current.sceneId });
+      return false;
+    }
+    return settleAccount(data, acc, nowIso, u && u.cause);
+  }
+  const who = String((u && (u.who || u.target)) || '').trim();
+  const amount = ACC.amountOf(u && u.amount);
+  if (!who || !(amount > 0)) return false;            // 校验器已经拦过，这里是兜底
+  const dir = /被/.test(String((u && u.dir) || '')) ? 'owed' : 'owe';
+  const acc = {
+    id: data.id('acc'), dir: dir, who: who, name: accNameOf(data, who),
+    amount: amount, currency: (playerWallet(data) || {}).currency || '元',
+    what: String((u && u.what) || '一笔账').slice(0, 30),
+    due: String((u && u.due) || '').slice(0, 10),
+    since: String((u && (u.since || u.t)) || nowIso).slice(0, 10),
+    status: 'open', t: nowIso, turn: (data.current && data.current.turnN) || 0,
+    cause: String((u && u.cause) || '').slice(0, 80)
+  };
+  list.push(acc);
+  if (list.length > 40) list.splice(0, list.length - 40);   // 刹车：账目不是流水账，只留最近的
+  ledgerPush(data, { t: nowIso, type: '账目', target: who,
+    desc: (dir === 'owe' ? '记下欠 ' : '记下被欠 ') + (acc.name || who) + ' ' + amount + acc.currency + '（' + acc.what + '）',
+    cause: (u && u.cause) || null, scene: data.current.sceneId, d: { acc: acc.id, dir: dir, amount: amount, what: acc.what, due: acc.due } });
+  return true;
+}
+// 一笔钱进出。方向 / 金额 / 给谁 / 为什么 —— 其余（够不够、先扣哪个、记什么账）全是确定性侧。
+function applyMoney(data, u, nowIso) {
+  const p = data.entities.player;
+  const w = playerWallet(data);
+  if (!p || !w) return false;
+  const dirIn = /收|进/.test(String((u && u.dir) || ''));
+  const acc = ACC.find(data, u);
+  let amount = ACC.amountOf(u && u.amount);
+  if (!(amount > 0) && acc) amount = Number(acc.amount) || 0;   // 带账目又没写金额 → 按账目算
+  if (!(amount > 0)) return false;
+  const what = String((u && u.what) || (acc && acc.what) || '一笔钱').slice(0, 30);
+  const ch = String((u && u.channel) || '').slice(0, 12);
+  const other = String((u && (dirIn ? (u.from || u.to) : (u.to || u.from))) || (acc && acc.who) || '').trim();
+  const oName = other ? accNameOf(data, other) : '';
+  const money = w.currency || '元';
+  if (dirIn) {
+    tryEarn(data, amount, what);
+    ledgerPush(data, { t: nowIso, type: '钱款变动', target: 'player',
+      desc: '收了 ' + amount + money + '（' + what + '）' + (oName ? '——来自 ' + oName : '') + (ch ? '·' + ch : ''),
+      cause: (u && u.cause) || null, scene: data.current.sceneId, d: { dir: 'in', amount: amount, who: other, what: what, channel: ch } });
+    return true;
+  }
+  const r = tryPay(data, amount, what);
+  if (!r.ok) {
+    /* 校验器按"提议那一刻的余额"判过，这里是**同回合多笔**的兜底（第二笔可能就不够了）。
+       不够也必须留痕 + 让叙事有据可依 —— 静默失败正是这一局 OOC 的原始形态。 */
+    ledgerPush(data, { t: nowIso, type: '交易拒绝', target: 'player', desc: '想付 ' + amount + money + '（' + what + '），钱不够，差 ' + (r.shortfall || 0), cause: '余额不足', scene: data.current.sceneId });
+    return false;
+  }
+  w.spent = (Number(w.spent) || 0) + amount;
+  ledgerPush(data, { t: nowIso, type: '钱款变动', target: 'player',
+    desc: '付出 ' + amount + money + '（' + what + '）' + (oName ? '——给 ' + oName : '') + (ch ? '·' + ch : ''),
+    cause: (u && u.cause) || null, scene: data.current.sceneId, d: { dir: 'out', amount: amount, who: other, what: what, channel: ch } });
+  if (acc && amount >= (Number(acc.amount) || 0)) settleAccount(data, acc, nowIso, u && u.cause);
+  return true;
 }
 
 function resolveWakeTime(nowIso, wakeHour) {
@@ -374,7 +465,21 @@ function resolveSpeaker(data, sid) {
   }
   const byName = Object.values(data.entities).find(x => x.type === 'person' && x.name === String(sid));
   const s2 = say(byName); if (s2) return s2;
-  return String(sid);
+  /* ★ v3.13：AI 写的 speaker 形态比契约多。实测（用户那局「靠山屯·1994」）它写的是 `npc_xiuxiu`
+     —— 而实体 id 是 `xiuxiu`（AI 自己起的有意义 id）。原来只认「末尾数字」和「整名相等」，
+     于是那一句台词归属不出来，屏幕上就没有说话人。多给两条宽容的匹配（都对不上才原样返回）。 */
+  const raw = String(sid);
+  const bare = raw.replace(/^npc[_\-]?/i, '');
+  const byBare = Object.values(data.entities).find(x => x.type === 'person' && String(x.id) === bare);
+  const s3 = say(byBare); if (s3) return s3;
+  const byPart = Object.values(data.entities).find(x => {
+    if (!x || x.type !== 'person') return false;
+    const nm = String(x.name || '');
+    if (nm.length < 2) return false;
+    return raw.indexOf(nm) >= 0 || nm.indexOf(raw) >= 0;
+  });
+  const s4 = say(byPart); if (s4) return s4;
+  return raw;
 }
 
 function offlineEvents(data, wakeIso) {
@@ -572,6 +677,7 @@ function applyUpdates(data, updates, nowIso) {
           if (sp.backstory && !prof.background.经历) prof.background.经历 = sp.backstory;
           const imp = ensureImp(data, dup.id);
           if (imp.nameKnown && sp.name && imp.nameKnown !== sp.name && imp.stage < 3) imp.stage = 3;
+          try { const L1 = (imp.log = imp.log || []); L1.push({ turn: data.current.turnN || 0, what: '又见到了 TA', why: String(u.cause || '（没说原因）').slice(0, 60) }); if (L1.length > 20) L1.shift(); } catch (eL2) { DEG.hit('game.js:impLog2', eL2); }
           ledgerPush(data, { t: nowIso, type: '人物出现', target: dup.name, desc: ('又见到了 ' + (dup.name || sp.name) + (u.cause ? '——' + u.cause : '')), cause: u.cause || null });
           applied++;
         } else {
@@ -586,6 +692,8 @@ function applyUpdates(data, updates, nowIso) {
         if (!data.knowledge.knownPeople.includes(npcId)) { data.knowledge.knownPeople.push(npcId); }
         ensureImp(data, npcId);
         data.impressions[npcId].stage = 1; data.impressions[npcId].seen = sp.appearance || '一个陌生面孔'; data.impressions[npcId].nameKnown = sp.name;
+        /* v3.9：这条印象的出处 —— 哪一轮、因为什么（人物出现）。 */
+        try { const L0 = (data.impressions[npcId].log = data.impressions[npcId].log || []); L0.push({ turn: data.current.turnN || 0, what: 'TA 出现在你面前', why: String(u.cause || '（没说原因）').slice(0, 60) }); if (L0.length > 20) L0.shift(); } catch (eL) { DEG.hit('game.js:impLog', eL); }
         ledgerPush(data, { t: nowIso, type: '人物出现', target: sp.name, desc: (sp.name + ' 出现' + (u.cause ? '——' + u.cause : '')), cause: u.cause || null,
           d: { anchor: (u._anchor && u._anchor.kind) || '', anchorId: (u._anchor && u._anchor.id) || '' } });
         /* v2.11：这条人物是从哪条上游兑现出来的 —— 记账，并给那条上游计数（cap 靠它） */
@@ -688,6 +796,12 @@ function applyUpdates(data, updates, nowIso) {
             applied++;
           }
         }
+      } else if (u.type === '钱款变动') {
+        /* ★ v3.20：AI 提议一笔钱进出，引擎真的动余额（方向/金额/给谁/为什么 由它说，其余确定性侧） */
+        if (applyMoney(data, u, nowIso)) applied++;
+      } else if (u.type === '账目') {
+        /* ★ v3.20：记一笔账 / 结清一笔账。数字由"记"的那一次定下，之后只引用不改口 */
+        if (applyAccount(data, u, nowIso)) applied++;
       } else if (u.type === '地点变化') {
         /* v1.84：AI 让玩家移动，也要走**和玩家自己走**同一套确定性规则 ——
            原来只有"目标 id 存在就改 sceneId"，不耗时间、不记去过的地方、不刷新天气感知（免费瞬移）。 */
@@ -1088,7 +1202,7 @@ async function runTurn(data, text, cfg, opts) {
     try {
       const lastLine = data.sceneLog[data.sceneLog.length - 1];
       if (!(lastLine && lastLine.type === 'outcome' && lastLine.text === ctx.opLog)) {
-        data.sceneLog.push({ t: data.current.time, type: 'outcome', text: String(ctx.opLog).slice(0, 300) });
+        data.sceneLog.push({ t: data.current.time, turn: data.current.turnN || 0, type: 'outcome', text: String(ctx.opLog).slice(0, 300) });
       }
     } catch (e) { DEG.hit('game.js', e); }
   }
@@ -1121,7 +1235,7 @@ async function runTurn(data, text, cfg, opts) {
     /* v2.09：主叙事这一路如果落兜底，**玩家必须能知道**（原来完全静默）。
        var（不是 let）：它在函数作用域里，要带到下面的 return 去。 */
     var __fellBack = false;
-    out = await AI.llmJSON(cfg, messages, function () { __fellBack = true; return AI.mockMain(data, ctx); }, Math.min(32768, AI.cfgMax(cfg)), (opts && opts.onDelta) || undefined, think);
+    out = await AI.llmJSON(cfg, messages, function () { __fellBack = true; return AI.mockMain(data, ctx); }, AI.cfgMax(cfg), (opts && opts.onDelta) || undefined, think);
     if (out && out.__fallback) { __fellBack = true; out = out.value; }
     // ---- 叙事主权闭环：现实化/说教检测命中 → 带重写要求重试一次（仅一次，不循环） ----
     const guardHit = (out && !out.__fallback) ? AI.guardCheck(out) : null;
@@ -1129,7 +1243,7 @@ async function runTurn(data, text, cfg, opts) {
       try {
         console.log('[guard] 命中 ' + guardHit.join('/') + ' → 重写一轮');
         messages.push({ role: 'user', content: '【重写要求】上一版出现「' + guardHit.join('、') + '」——以现实视角介入或说教式处理，违反叙事主权（虚构内容按世界规则演进，不作现实道德裁决，不解释、不道歉）。请完全以本世界观重写，只输出最终 JSON。' });
-        const outR = await AI.llmJSON(cfg, messages, () => null, Math.min(32768, AI.cfgMax(cfg)), (opts && opts.onDelta) || undefined, (think === 'none' ? 'medium' : 'high'));
+        const outR = await AI.llmJSON(cfg, messages, () => null, AI.cfgMax(cfg), (opts && opts.onDelta) || undefined, (think === 'none' ? 'medium' : 'high'));
         if (outR && !outR.__fallback && outR.frame) out = outR;
       } catch (e) { DEG.hit("game.js", e); }
     }
@@ -1140,7 +1254,7 @@ async function runTurn(data, text, cfg, opts) {
         const qres = QUERY.resolve(data, out.query);
         QUERY.trace(data, out.query, qres);
         messages.push({ role: 'user', content: '【查询回执】' + String.fromCharCode(10) + QUERY.render(qres) + String.fromCharCode(10) + '请据此一次性输出最终 frame/updates（不要再调用工具）。' });
-        const outQ = await AI.llmJSON(cfg, messages, () => null, Math.min(32768, AI.cfgMax(cfg)), undefined, 'medium');
+        const outQ = await AI.llmJSON(cfg, messages, () => null, AI.cfgMax(cfg), undefined, 'medium');
         if (outQ && !outQ.__fallback && outQ.frame) out = outQ;
       } catch (e6) { DEG.hit("game.js", e6); }
     }
@@ -1152,7 +1266,7 @@ async function runTurn(data, text, cfg, opts) {
         if (routed && routed.length && routed.some(r => r.name || r.id)) {
           const recap = routed.map(r => (r.name || r.note || r.kind)).filter(Boolean).slice(0, 4).join('；');
           messages.push({ role: 'user', content: '【工具回执】' + recap + '（已入库，可用名字引用）。请利用它们一次性输出最终 frame/updates（不要再调用工具）。' });
-          const out2 = await AI.llmJSON(cfg, messages, () => null, Math.min(32768, AI.cfgMax(cfg)), undefined, 'medium');
+          const out2 = await AI.llmJSON(cfg, messages, () => null, AI.cfgMax(cfg), undefined, 'medium');
           if (out2 && !out2.__fallback && out2.frame) out = out2;
         }
       } catch (e5) { DEG.hit("game.js", e5); }
@@ -1254,7 +1368,7 @@ async function runTurn(data, text, cfg, opts) {
       }
       rounds++;
       messages.push({ role: 'user', content: GATE.render(cs) });
-      const out3 = await AI.llmJSON(cfg, messages, () => null, Math.min(32768, AI.cfgMax(cfg)), undefined, 'medium');
+      const out3 = await AI.llmJSON(cfg, messages, () => null, AI.cfgMax(cfg), undefined, 'medium');
       if (out3 && !out3.__fallback && out3.frame) out = out3; else break;
     }
   } catch (e8) {
@@ -1281,7 +1395,7 @@ async function runTurn(data, text, cfg, opts) {
       messages.push({ role: 'user', content: '【校验回执】这一回合的 Updates 里有 ' + v.rejected.length + ' 条不符合引擎规则，已丢弃：' + JSON.stringify(v.rejected)
         + '。请**只重新输出这几条**（用 {"updates":[...]} 的格式，按同样的顺序）；不要重写 frame、不要重复已经通过的条目。'
         + '如果某一条无法在不违反规则的前提下改写，就干脆不要输出它。' });
-      const out4 = await AI.llmJSON(cfg, messages, () => null, Math.min(32768, AI.cfgMax(cfg)), undefined, 'medium');
+      const out4 = await AI.llmJSON(cfg, messages, () => null, AI.cfgMax(cfg), undefined, 'medium');
       if (out4 && !out4.__fallback && Array.isArray(out4.updates)) {
         const rej = v.rejected.slice().sort((x, y) => x.index - y.index);
         const repl = out4.updates.slice(0, rej.length);
@@ -1352,7 +1466,9 @@ async function runTurn(data, text, cfg, opts) {
 
   // 场景日志（限长 30）
   // v1.84：时间戳取 data.current.time（applyUpdates 里"AI 让玩家移动"会推进时间）
-  const line = function (type, text2, speaker, tone) { return { t: data.current.time, type, speaker, tone, text: text2 }; };
+  /* v3.9：场景日志每条都带**轮次**（用户：「以后所有产出的数据都要打上标记 这是哪一轮-什么事件」）——
+     一条 sceneLog 不带轮次，事后就分不清「这句台词是第几轮说的」，回读窗口与复盘都只能靠时间戳猜。 */
+  const line = function (type, text2, speaker, tone) { return { t: data.current.time, turn: data.current.turnN || 0, type, speaker, tone, text: text2 }; };
   data.sceneLog = data.sceneLog || [];
   const spanStart = data.sceneLog.length;
   data.sceneLog.push(line('user-action', '你: ' + text));
@@ -1389,7 +1505,7 @@ async function runTurn(data, text, cfg, opts) {
        「动作和台词分开写才有主次两层」只在**当回合**生效，第二天就没了（审视 §8.3 的五环泄漏）。
        用 undefined 而不是空串：老档里没有这些字段的 beat 形状不变。 */
     data.sceneLog.push({
-      t: data.current.time, type: b.type, speaker: sid2, tone: b.tone, text: b.text,
+      t: data.current.time, turn: data.current.turnN || 0, type: b.type, speaker: sid2, tone: b.tone, text: b.text,
       action: b.action || undefined, expression: b.expression || undefined,
       voice: b.voice || undefined, actor: b.actor || undefined
     });
@@ -1472,12 +1588,35 @@ async function runTurn(data, text, cfg, opts) {
   const __react = buildReaction(data, v.allowed);
   if (__react) {
     const __last2 = data.sceneLog[data.sceneLog.length - 1];
-    if (!(__last2 && __last2.type === 'reaction' && __last2.text === __react)) data.sceneLog.push({ t: data.current.time, type: 'reaction', text: String(__react).slice(0, 300) });
+    if (!(__last2 && __last2.type === 'reaction' && __last2.text === __react)) data.sceneLog.push({ t: data.current.time, turn: data.current.turnN || 0, type: 'reaction', text: String(__react).slice(0, 300) });
   }
   /* v1.97：教程提示**不是世界内容**，它是引导 —— 所以它不进 sceneLog。
      sceneLog 是剧情原文：它会进剧本存档，也会作为「最近场景原文」喂给下一回合的主 AI，
      一条"回她？"混进去，等于让 AI 以为世界里有人这么说过。它走视图里的单独一档（见 buildView 的 tutor）。 */
   if (tutorHint) data.current.tutorHint = { text: String(tutorHint).slice(0, 160), turn: data.current.turnN || 0 };
+  /* ★ v3.12 · 世界模板创造（用户 2026-09-27「动」）：**AI 负责想，代码负责批准**。
+     · 想：主 AI 每回合顺手在 frame.creator 里说一句（{want, why}）—— **0 额外 token**（本来就要输出 frame）；
+     · 批准：冷却 6 回合 + 每世界日 2 次 + 跨年（时代节点）免冷却 —— 纯算术，见 creator.shouldCreate；
+     · 造：一次 llmJSONDeep（给它资料 + creatorPromptBlock），产出的板块过 checkPanel 校验后落进存档；
+     · 留痕：采纳与未采纳都记进 framework.proposals；任何异常**不许连累回合**。
+     位置在这一回合的最后（数据都落定了），所以新板块这一回合就能上屏。 */
+  try {
+    /* ★ v3.17 · 善后与有头有尾（0 token，每回合都跑）：
+       enforceKeep = 按每格自己的寿命把超出的行**归档**（降级不是删）+ 折叠成一句留在眼前那一轨；
+       retireByCode = 纯代码那条淘汰规则（声明 who:'code' 且超过寿命没更新 → 退休 + 进档案 + 等一句世界内交代）。 */
+    try { CREATE.enforceKeep(data); } catch (eK) { DEG.hit('game.js:keep', eK); }
+    try { CREATE.retireByCode(data); } catch (eR) { DEG.hit('game.js:retire', eR); }
+    /* inline 类板块的行：主 AI 顺手产的（0 额外调用）—— 先落行，再谈造不造新的。 */
+    try {
+      const __pd = (out.frame && out.frame.panelData) || out.panelData || null;
+      if (Array.isArray(__pd)) for (const it of __pd) { if (it && it.id && Array.isArray(it.rows)) CREATE.addRows(data, String(it.id), it.rows); }
+    } catch (eR) { DEG.hit('game.js:panelRows', eR); }
+    const __hint = (out.frame && out.frame.creator) || out.creator || null;
+    if (__hint && __hint.want) {
+      const __cr = await CREATE.maybeCreate(data, cfg, __hint);
+      if (__cr && __cr.ok) ctx.opLog = (ctx.opLog ? ctx.opLog + '；' : '') + '（世界长出了新东西：' + (__cr.kept || []).map(k => (k.shape && k.shape.name) || '').filter(Boolean).join('、') + '）';
+    }
+  } catch (eC) { DEG.hit('game.js:creator', eC); }
   view2 = buildView(data);
   return { intent, frame: out.frame, errors: v.errors, applied, fresh, recalled: recalled || [], view: view2,
     /* v2.09：这一段是不是兜底生成的 —— 界面照实说，不再让玩家（和作者）自己猜。 */
@@ -1603,7 +1742,10 @@ function ensureImp(data, id) {
       traits: warm >= 3 ? ['（老街坊的熟面孔）'] : [],
       notes: [],
       bonds: tone ? [tone] : ['初识'],
-      nameKnown: npc.name
+      nameKnown: npc.name,
+      /* v3.9：印象的**出处** —— 这条印象是哪一轮、因为什么来的（用户举例：人物对某的印象）。
+         原来印象档只有结论（stage/seen/bonds），没有任何「它是什么时候、因为什么变成这样」的痕迹。 */
+      log: [{ turn: (data.current && data.current.turnN) || 0, what: '初次建档', why: '关系基调：' + (tone || '（未写）') }]
     };
   }
   /* v1.84：**归一化**已存在的印象档。原来只在"没有"时建，半截档（手写 / 导入 / 外部插件写的
@@ -1845,12 +1987,26 @@ function buildViewRaw(data) {
     })(),
     place: { id: scene.id, name: scene.name, tags: scene.tags, features: scene.features },
     cast, unread: unread.length,
+    /* ★ v3.12 · 这一局「长什么样」：AI 造的板块（含已逐条门控的行）。
+       空数组 = 还没有板块（不是错误）—— 界面就不显示入口。 */
+    panels: (function () { try { return CREATE.panelView(data); } catch (e) { DEG.hit('game.js:panels', e); return []; } })(),
     /* v3.0：镜头（AI 定主次）。空数组 = 这一刻没有主次，界面不许自己挑一个。 */
     focus: ((data.current && data.current.focus) || []).slice(0, 3),
     /* v3.3：玩家的念头（已经逐条门控过 —— 见 runTurn 里 data.current.suggestions 那一段） */
     suggestions: ((data.current && data.current.suggestions) || []).slice(0, CONTRACT.SUGGEST_MAX),
     msgs, map: mapNodes, people, shop: storeItems, inventory: inv, news, overview,
     money: { currency: wallet.currency || '元', cash: wallet.cash || 0, digital: wallet.digital || 0, spent: wallet.spent || 0, earned: wallet.earned || 0 },
+    /* ★ v3.20：账目（欠着谁 / 谁欠你）。名字走**同一把门控尺子**（viewName）——
+       账目本身是"你知道的事"，不该门控；但"对方叫什么"仍然只有认识了才知道。 */
+    accounts: (function () {
+      try {
+        return ACC.view(data).map(a => {
+          /* 与 resolveSpeaker 同一把尺子：知道了给名字，不知道的给"看得见的样子" */
+          const nm = a.who ? (GATE.nameOf(data, a.who) || (a.name ? (GATE.scrubText(data, a.name) || '') : '')) : (a.name || '');
+          return { id: a.id, dir: a.dir, who: a.who, name: nm, amount: a.amount, currency: a.currency, what: a.what, due: a.due, status: a.status };
+        });
+      } catch (e) { DEG.hit('game.js:accounts', e); return []; }
+    })(),
     sceneLog: (function () {
       // 生图定位：本回合 beats（_imgBeatSpan）里的条目，at 对应序号 → 挂 imgs（图卡随叙事流显示）
       const span = data.current && data.current._imgBeatSpan;
@@ -1896,15 +2052,23 @@ function buildViewRaw(data) {
              真实存档统计（4 个世界 / 31 条 speaker+actor）：100% 都能解析成人物实体，
              所以这条收紧不改动任何现有存档的显示。 */
           const other = getEntity(data, v) || Object.values(data.entities).find(x => x && x.name === v);
-          if (other) return String(other.name || '？');
-          return '？';
+          if (other) return String(other.name || '');
+          /* ★ v3.5 修（用户实测截图：**每一块她的台词头顶都挂着一个 `?`**）。
+             原来这里返回 '？'，本意是"保留有人在说话、不保留那个名字"。
+             但屏幕上一个孤零零的 `?` 读起来不是"名字被门控了"，而是"**这里坏了**"。
+             而且这条注释赖以成立的假设已经破了：它写着"真实存档统计 100% 都能解析成人物实体"，
+             而实测的一局里 8 条 speaker 有 6 条解析不了（AI 写了 `npc_sasha` /
+             `一个陌生人（你叫不出名字）`——后者是它**把资料包里的显示名当 id 抄回来了**）。
+             所以：解析不到就返回空串，让渲染端**干脆不画那一行**（正文还在，"有人在说话"没丢）。
+             根因在别处（见 playFrame 里存 speaker 那一段），这里只管别把问号印到玩家脸上。 */
+          return '';
         };
         let item = l;
         const sp = l.speaker, ac = l.actor;
         if (sp || ac) {
           item = Object.assign({}, l);
-          if (sp) { const nm = whoName(sp) || '？'; item.speaker = nm; item.speakerName = nm; }
-          if (ac) { const an = whoName(ac) || '？'; item.actor = an; item.actorName = an; }
+          if (sp) { const nm = whoName(sp); item.speaker = nm; item.speakerName = nm; }
+          if (ac) { const an = whoName(ac); item.actor = an; item.actorName = an; }
         }
         if (imgs) item = Object.assign({}, item, { imgs: imgs });
         outArr.push(item);
@@ -1949,6 +2113,9 @@ const MYLOG_VERB = {
        门控只能靠"新增前记得问一句"这条纪律（A5「世界账本」剧透就是这么漏出去的，当时的修法只是挪走 ledger）。
    治：世界视图只放世界/感知/认知/行动要用的东西；**开发者字段（框架/生成清单/AI 计量/来源卡）走 /api/dev**。
    catworld-ui 越权红线 4：「开发者信息不上桌，只在 ?dev 时显示」。 */
+/* v3.12：世界模板创造（板块）—— 它只在 buildView 与 runTurn 两处被用到。 */
+const CREATE = require('./creator');
+
 const DEV_KEYS = ['framework', 'manifest', 'stats', 'devMeta'];
 function buildView(data) {
   const v = buildViewRaw(data);
@@ -2199,7 +2366,7 @@ async function genProfile(data, id, cfg) {
   };
   let built = false;
   try {
-    const out = await AI.llmJSON(cfg, [{ role: 'system', content: PROFILE_SYS }, { role: 'user', content: JSON.stringify(inp) }], {}, 900, null, 'none');
+    const out = await AI.llmJSON(cfg, [{ role: 'system', content: AI.withCharter(PROFILE_SYS) }, { role: 'user', content: JSON.stringify(inp) }], {}, AI.cfgMax(cfg), null, 'none');
     const n9 = (out && out.nine) || null;
     if (n9 && typeof n9 === 'object') {
       const vis = (p.profile.visual = p.profile.visual || {});

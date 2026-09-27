@@ -1,4 +1,4 @@
-﻿// server.js — 本地 Web 服务（静态 UI + JSON API）—— v1.6 多世界管理
+// server.js — 本地 Web 服务（静态 UI + JSON API）—— v1.6 多世界管理
 'use strict';
 const DEG = require('./src/degraded');
 const RET = require('./src/retention');   // v1.87 统一留存策略（阈值表 + 溢出落盘）
@@ -18,7 +18,7 @@ const SCHED = require('./src/scheduler');
 const VIS = require('./src/visual');
 const CONTENT = require('./src/content');   // v1.61 内容模块槽位
 
-const BUILD = 'v3.4';
+const BUILD = 'v3.20';
 /* v1.84：存档 schema 版本。原来**世界数据零版本字段**，loadWorld 里 8 段"字段缺失就补"的迁移
    只能靠猜年代（ai.js 里还有一条用 timeoutMs===90000 猜年代的同类病）。现在：档里带版本，
    迁移有了明确边界，且迁移动作会进生成清单留痕（设计总稿 §26.3 要求"修复必须留痕"）。 */
@@ -747,16 +747,29 @@ function configView() {
   return { baseURL: (cfg.llm && cfg.llm.baseURL) || '', apiKey: (cfg.llm && cfg.llm.apiKey) || '', model: (cfg.llm && cfg.llm.model) || '', port: cfg.port || 3088, maxTokens: (cfg.llm && cfg.llm.maxTokens) || 32768, timeoutMs: (cfg.llm && cfg.llm.timeoutMs) || 900000,   // v1.83 修 P1-7：原来漏了这个键，前端永远显示 90000 并在下次保存时把用户设定冲掉
     playerName: cfg.playerName || '你', msgModel: (cfg.roles && cfg.roles.msg && cfg.roles.msg.model) || '', userSelf: cfg.userSelf || {}, image: cfg.image || { enabled: false, base: '', workflow: '', mode: 'zit' } };
 }
+/* ★ v3.6 · 开场池（备选最多 4 条在前、主开场在最后）——**给玩家看的那一份，不许截断**。
+   为什么改：原来这里 slice(0,200)/slice(0,400)，app.js 那边再 slice(0,90) ——
+   结果是"选的时候每条最多看到 90 字，而进世界后演的是 1200 字"，
+   玩家没法读完剧情就得选一条决定整局开场（用户 2026-09-27 报案，见交接文档 §7.5）。
+   顺序与 packToData 的 greeting 下标严格一致（import.js:1044）。 */
+function openingPoolOf(pk) {
+  /* ★ v3.7：**委托给 import.js 的唯一推导点** —— 原来这里自己写了一份 slice(0,4)，
+     于是"20 条备选开场"在服务端就先被砍成 4 条（玩家永远看不到第 5 条之后）。
+     两处各写一份账，正是本项目反复栽的那种死法（见 §6.126d 的 deploy-dist 清单）。 */
+  try { return IMP.openingPool(pk || {}); }
+  catch (e) { DEG.hit('server.js:openingPool', e); }
+  const alts = Array.isArray(pk && pk.alternates) ? pk.alternates : [];
+  return alts.map(a => String(a == null ? '' : a)).filter(t => t.trim()).concat([String((pk && pk.firstScene) || '')]);
+}
 function packPreview(pack, mode) {
   const pk = pack || {};
   // 开场池：备选开局在前（最多 4 条），主开场在最后；openings = 池长，openingList = 预览展示（与 packToData 的 greeting 下标一致）
-  const pool = ((Array.isArray(pk.alternates) ? pk.alternates : []).slice(0, 4)).map(a => String(a || '').slice(0, 200))
-    .concat([String(pk.firstScene || '').slice(0, 400)]);
+  const pool = openingPoolOf(pk);
   return {
     name: (pk.meta && pk.meta.name) || '未名之地',
     era: (pk.meta && pk.meta.era) || '时代未知',
     weather: pk.weather || '',
-    firstScene: String(pk.firstScene || '').slice(0, 400),
+    firstScene: String(pk.firstScene || ''),
     npcs: (pk.npcs || []).map(n => (n && n.name) || '？'),
     places: (pk.places || []).map(x => (x && x.name) || '？'),
     openingList: pool,
@@ -836,6 +849,30 @@ const server = http.createServer(async (req, res) => {
         });
         return json(res, 200, { list: list, count: (meta.cards || []).length });
       }
+      /* ★ v3.6 · 卡盒开局的**开场全文**（只读）。
+         为什么单独一个入口：卡盒的 meta.cards[].openingList 存的是摘要（建档时截过），
+         而"选一条开场"这个动作要看的是**整段剧情**（交接文档 §7.5）。
+         全文一直在卡档里（data/cards/<id>.json → pack.alternates / pack.firstScene）——
+         这里只是把它读出来给界面，不改任何存档。 */
+      if (u.pathname === '/api/cards/openings') {
+        const id = String(u.searchParams.get('id') || '');
+        const fp = cardFile(id);
+        if (!id || !fs.existsSync(fp)) return json(res, 200, { ok: false, err: '这张卡没有卡档（可能被删了）' });
+        try {
+          const ck = JSON.parse(fs.readFileSync(fp, 'utf8'));
+          const pool = openingPoolOf(ck.pack || {});
+          GL('卡盒开场全文 ' + (ck.name || id) + ' ' + pool.length + ' 条');
+          return json(res, 200, { ok: true, name: ck.name || '', list: pool, worldName: (ck.pack && ck.pack.meta && ck.pack.meta.name) || ck.name || '' });
+        } catch (e2) { return json(res, 200, { ok: false, err: '读不了：' + String((e2 && e2.message) || e2) }); }
+      }
+      /* ★ v3.6 · 上次那次扫描的结果还在不在（§7.6）。
+         预览结果只活在服务端内存里（SCAN_CACHE，最多 6 份、**用掉才删**）——
+         界面要能"回到刚才那份预览"，就必须先问一句它还在不在，
+         否则点下去会变成重新扫描（4 分钟 / 5.5 万 token，用户 2026-09-27 就是这么丢的）。 */
+      if (u.pathname === '/api/scan/alive') {
+        const id = String(u.searchParams.get('id') || '');
+        return json(res, 200, { ok: true, alive: !!(id && SCAN_CACHE.has(id)), cap: 6 });
+      }
       if (u.pathname === '/api/content/list') return json(res, 200, CONTENT.view(cfg));
       if (u.pathname === '/api/worldinfo/list') {
         const wi = (current && current.worldinfo) || {};
@@ -876,6 +913,26 @@ const server = http.createServer(async (req, res) => {
         else if (v && typeof v === 'object') { rows = {}; for (const k of Object.keys(v).slice(0, lim)) rows[k] = v[k]; }
         else rows = v;
         return json(res, 200, { ok: true, inWorld: true, t: t, total: total, limit: lim, truncated: total > lim, rows: rows });
+      }
+      if (u.pathname === '/api/llm') {
+        /* ★ v3.5 · AI 流量台的**只读钩子**（外置工具 `.dsh/tools/llm/` 用，分工照抄 wsq：
+           「门在模拟器里，钥匙在工具手里」）。
+           三条硬规矩：① 只读（没有任何写入口）② **不要求已进入世界** —— 建档那三步跑在
+           进世界之前，正是最需要看的时候（这是与 /api/db 唯一的不同，且是有意的）
+           ③ 分两段取：`?n=` 给轻量列表（页面每 2 秒轮询它），`?id=` 给那一条的请求+响应全文。 */
+        const TRACE = require('./src/llmtrace');
+        const id = parseInt(u.searchParams.get('id'), 10) || 0;
+        GL('api llm' + (id ? ('?id=' + id) : '?n=' + String(u.searchParams.get('n') || '')));
+        if (id) {
+          const r = TRACE.one(id);
+          if (!r) return json(res, 200, { ok: false, err: '没有第 ' + id + ' 条（可能已经被环形缓冲挤掉了，只留最近 ' + TRACE.CAP + ' 次）' });
+          return json(res, 200, { ok: true, readonly: true, row: r });
+        }
+        const v = TRACE.view(u.searchParams.get('n'));
+        return json(res, 200, {
+          ok: true, readonly: true, note: '**内存态**：进程一重启就没了（响应内容从来不落盘）',
+          cap: v.cap, seq: v.seq, n: v.n, refused: v.refused, rows: v.rows
+        });
       }
       if (u.pathname === '/api/visual/lib') {
         // 外貌库（引擎工作台）：谁有九维档案、档案全不全、有没有立绘。
@@ -1212,20 +1269,18 @@ const server = http.createServer(async (req, res) => {
         }
         if (p.era) { scan.pack.meta = scan.pack.meta || {}; scan.pack.meta.era = p.era; }
         progSet('落库 · 写卡档与开场', 94);
-        if (p.preview) {
-          progClear();
-          const sidNew = makeId('scan');
-          SCAN_CACHE.set(sidNew, scan);
-          if (SCAN_CACHE.size > 6) { const k0 = SCAN_CACHE.keys().next().value; SCAN_CACHE.delete(k0); }
-          return json(res, 200, { preview: packPreview(scan.pack, scan.mode), scanId: sidNew });
-        }
+        /* ★ v3.18（用户 2026-09-27）：「存到模拟器的卡盒里面啊 **这就是差第三步而已** 卡盒不就是用来存扫描角色卡的数据的吗？」
+           所以**预览不再提前 return** —— 先落卡盒（下面那段建档，entered:false），再回预览。
+           第三步（开局编译）走完才进存档，那是另一件事。 */
         GL('导入 ' + (card.name || '未命名') + ' mode=' + scan.mode + (scan.note ? (' note=' + String(scan.note).slice(0, 80)) : '') + ' greeting=' + (Number.isInteger(p.greeting) ? p.greeting : 0));
         // 扫描过的卡建档：下次直接从卡开局（存的是卡，不是存档）
         const meta = loadMeta();
         meta.cards = meta.cards || [];
         const cn = card.name || '未命名';
         const era = (scan.pack.meta && scan.pack.meta.era) || '';
-        const pool = ((Array.isArray(scan.pack.alternates) ? scan.pack.alternates : []).slice(0, 4)).map(a => String(a || '').slice(0, 200)).concat([String(scan.pack.firstScene || '').slice(0, 400)]);
+        /* v3.7：摘要仍是短的（列表要轻），但**条数必须是全部** ——
+           "开场 N 条"这个数字不能撒谎；全文由 GET /api/cards/openings 现取。 */
+        const pool = openingPoolOf(scan.pack).map((a, i, arr) => String(a || '').slice(0, i === arr.length - 1 ? 400 : 200));
         let cardEntry = meta.cards.find(c => c.name === cn && (c.era || '') === era);
         const rec = {
           id: cardEntry ? cardEntry.id : makeId('c'),
@@ -1239,7 +1294,10 @@ const server = http.createServer(async (req, res) => {
           // 分析稿 + 补全 + 裁决 —— 这份存档是怎么来的，全在这
           filledN: (Array.isArray(scan.pack.filled) ? scan.pack.filled.length : 0),
           conflictsN: (Array.isArray(scan.pack.conflicts) ? scan.pack.conflicts.length : 0),
-          analysisLen: String(scan.analysis || '').length
+          analysisLen: String(scan.analysis || '').length,
+          /* ★ v3.18：这张卡走到哪一步了 —— 扫描完（第一+二步）就进卡盒（false）；
+             第三步开局编译走完、进了存档才 true。卡盒里因此会出现「还没开局」的卡，那是正常的。 */
+          entered: !p.preview
         };
         meta.cards = meta.cards.filter(c => c.id !== rec.id);
         meta.cards.push(rec);
@@ -1248,6 +1306,14 @@ const server = http.createServer(async (req, res) => {
           fs.mkdirSync(cardsDir(), { recursive: true });
           writeAtomic(cardFile(rec.id), { id: rec.id, name: cn, era, mode: rec.mode, note: rec.note || null, scanned: rec.scanned, pack: scan.pack, analysis: scan.analysis || '', analysisAt: rec.scanned });
         } catch (e) { console.error('[cardbox]', e.message); }
+        /* 预览：卡档已落盘（entered:false），把这次扫描挂进内存票据后回预览页 */
+        if (p.preview) {
+          progClear();
+          const sidNew = makeId('scan');
+          SCAN_CACHE.set(sidNew, scan);
+          if (SCAN_CACHE.size > 6) { const k0 = SCAN_CACHE.keys().next().value; SCAN_CACHE.delete(k0); }
+          return json(res, 200, { preview: packPreview(scan.pack, scan.mode), scanId: sidNew, archived: rec.id });
+        }
         const data = IMP.packToData(scan.pack, { greeting: Number.isInteger(p.greeting) ? p.greeting : 0 });
         data.meta.cardId = rec.id;   // v1.75：这一局挂到这张卡下面（卡盒开局那条路一直有，扫卡导入这条路漏了 → 世界全掉进「没有角色卡的」，卡下永远是 0 个聊天）
         try { await OPEN.compile(data, cfg); } catch (e) { DEG.hit('server.js:opening', e); }

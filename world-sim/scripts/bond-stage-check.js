@@ -36,9 +36,20 @@ ok(stageOf(mk([{ id: 'npc1', name: 'A', inScene: true }]), 'npc1') === 1, '什�
 // ④ schema 有没有把六个词写死（这次的根因就是没写）
 const sys = IMP.scanSystem();
 const an = IMP.analyzeSystem();
-ok(/只能从这六个里选一个/.test(sys), '★★ schema 里写死了六个词（根因：原来只写「<关系基调词>」，AI 随便写）');
-ok(/恋人\|亲人\|旧识\|认识\|敌对\|初识/.test(sys), '★ 六个词列全了');
-ok(/基调词/.test(an), '★ 分析师那一步也要给基调词');
+/* ★ v3.8（用户 2026-09-27）：「不是让 ai 选择，是给它例子，让它自己去判断关系 ——
+   因为这些关系每张卡都可能不同，不能一棒子打死」。所以断言从「写死六词」改成「六词只是例子」。 */
+ok(!/只能从这六个里选一个/.test(sys), '★ 不再强制六选一（六个词降级成例子）');
+ok(/恋人\|亲人\|旧识\|认识\|敌对\|初识/.test(sys), '★ 六个词仍旧列出来当参考（AI 看得见）');
+ok(/用你自己的话写/.test(sys), '★ schema 明确说：用你自己的话写这层关系');
+ok(/用你自己的话写真话/.test(an) && /六个老例子只是参考/.test(an), '★ 分析师那一步同样是「写你自己的话 + 例子作参考」');
+
+/* ★ v3.8 · 「旧识会记不住脸吗」—— 在场不该一票否决「认不认识」（用户那局 22 人全被写成「你还不认识」） */
+ok(stageOf(mk([{ id: 'npc1', name: '陈思思', bond: '旧识', rel: '玩伴兼军师', inScene: false }]), 'npc1') === 3,
+  '★★ 旧识 + 不在场 → 仍是 3（原来 inScene 假就压成 1 =「你还不认识」）');
+ok((mk([{ id: 'npc1', name: '陈思思', bond: '旧识', rel: '玩伴兼军师', inScene: false }]).knowledge.knownPeople || []).indexOf('npc1') >= 0,
+  '★★ 不在场的熟人也在「开局认识的人」里');
+ok(stageOf(mk([{ id: 'npc1', name: 'A', bond: '初识', rel: '', inScene: false }]), 'npc1') === 1,
+  '初识 + 不在场 → 仍然是 1（门控没被整个拆掉）');
 
 // ⑤ 进度频道
 const sv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');

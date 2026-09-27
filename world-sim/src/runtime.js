@@ -215,6 +215,7 @@ function isAlive(p) { return !p || p.state === undefined || p.state.alive !== fa
    原来这张表在这儿、执行器在 game.js、说明在 ai.js 的提示词里，三处靠人同步（设计矛盾清单 M4）。
    现在：contract 是源，校验器从它取白名单，提示词从它生成，contract-check.js 断言「白名单 === 执行器」。 */
 const CONTRACT = require('./contract');
+const ACC = require('./accounts');     // v3.20 钱与账：金额归一 + 找账（与执行器同一份判据）
 const UPDATE_TYPES = CONTRACT.UPDATE_TYPE_NAMES;
 const DOC_BODY_MAX = 4000;   // 单份文书的正文上限（防止一封信吃掉整个存档/上下文）
 
@@ -332,7 +333,19 @@ function validateUpdates(data, updates, frame, ctx) {
        而 195 条断言全绿（没有任何脚本测过"造一个新人成功"）。
        修法：把 `人物出现` 加进"允许 target 尚不存在"的名单（事件本来就在这份名单里）。 */
     const mayCreate = (u.type === '人物出现');
-    if (tid && !isEvent && !mayCreate && !getEntity(data, tid) && tid !== 'player') { deny('地址不存在: ' + tid); continue; }
+    /* ★ v3.5 修（**端到端冒烟抓出来的真 bug；195+ 条单元断言全绿、没一条测到它**）：
+       `设定补全` 的 target 按契约**可以是 `player`，也可以是 `world`** ——
+       开局编译那条提示词与 `opening.toUpdates` 都这么写
+       （`world: { fields: { era, currency, note } }`），执行器 `applySettingFill` 也**早就支持**（game.js:425）。
+       但这里只放行了 `player`，于是 **`target:'world'` 一律被判「地址不存在」**⇒
+       **世界级字段（时代 / 货币 / 说明）从来没被落过库**。
+
+       为什么一直没露头：原来是**部分生效** —— 同一批里 player/npc 的补全照常落库，
+       world 那条被静默拒掉，`applied` 仍然 > 0、`openingHow` 照样写 'ai'，
+       **没有任何东西会响**。（用户 2026-09-26 让第三步改走"全有或全无"之后，
+       这一条一上来就把整批拖垮 —— 才终于现形。） */
+    const NON_ENTITY = ['player', 'world'];
+    if (tid && !isEvent && !mayCreate && !getEntity(data, tid) && NON_ENTITY.indexOf(tid) < 0) { deny('地址不存在: ' + tid); continue; }
     /* ---------- v2.12「有主」推广：凡"把新东西带进玩家世界"的 Update，都要有主 ----------
        名单在 contract.js（NEEDS_ANCHOR）——加一个字就能扩到新类型。
        分界：已经在世界里的（记忆/关系/情绪/事件进展/地点变化）不需要锚，它们改的是既有事实；
@@ -428,6 +441,49 @@ function validateUpdates(data, updates, frame, ctx) {
       if (!c.ok) { deny('非法移动（没有通路）: ' + dest); continue; }
       if (!u.cause) { deny('地点变化必须带因果（因何事去了那里）'); continue; }
       u._moveMinutes = c.minutes;
+    }
+    /* ── ★ v3.20 钱与账（用户实测 OOC 的直接产物）────────────────────────────
+       这道门只回答一个问题：**"这一笔付得出来吗"**。
+       为什么必须有：钱是确定性侧的量（不变量 §8），而在此之前 AI **连一条钱的 Update 都没有** ——
+       它只能靠旁白宣布"你转了 2400"，而存档里一分钱没动（实测那一局：account 里 spent=0，
+       账本却写着"钱已出账"）。现在它必须提议，引擎在**提议那一刻**判够不够；
+       不够就打回，并把它推回"写成没付成"这条路（回执里带着差额）。
+       判据用 accounts.js（同一份金额归一/找账逻辑给执行器用），不在这里重写一遍。 */
+    if (u.type === '钱款变动') {
+      const w = ((data.entities || {}).player || {}).money || {};
+      const cash = Number(w.cash) || 0, dig = Number(w.digital) || 0;
+      const cur = String(w.currency || '元');
+      const acc = ACC.find(data, u);
+      const amount = ACC.amountOf(u.amount) || (acc ? (Number(acc.amount) || 0) : 0);
+      if (!(amount > 0)) { deny('钱款变动要写 amount（数字），或者带上这笔账的 id / who'); continue; }
+      if (!/收|进/.test(String(u.dir || ''))) {
+        const total = cash + dig;
+        if (total < amount) {
+          deny('钱不够：兜里现金 ' + cash + cur + '、电子 ' + dig + cur + '，要付 ' + amount + cur + '，差 ' + (amount - total) + cur
+            + ' —— 这一笔**不许付成**：把它写成没办成（或改成付得起的数目，或先去凑钱），别在旁白里当它付了');
+          continue;
+        }
+        if (acc && amount < (Number(acc.amount) || 0)) {
+          deny('账上记着欠 ' + acc.amount + cur + '（' + (acc.what || '') + '），只付 ' + amount + cur + ' 不算清 —— 要么照账目付，要么在 what 里说清这只是其中一部分');
+          continue;
+        }
+      }
+      if (!u.cause) { deny('钱款变动要带 cause（这笔钱为什么动）'); continue; }
+      u.amount = amount;
+    }
+    if (u.type === '账目') {
+      const op = String(u.op || '记');
+      if (/清|销|还清|结/.test(op)) {
+        const acc = ACC.find(data, u);
+        if (!acc) { deny('账目要结清，但账上没有这一条（先把欠账记下来，或用 id / who 指明是哪一笔）'); continue; }
+        u.who = acc.who; u.amount = Number(acc.amount) || 0;
+      } else {
+        const who = String(u.who || u.target || '').trim();
+        if (!who || !getEntity(data, who)) { deny('账目要记在**认识的人**身上（who 用资料包里的 id）: ' + who); continue; }
+        if (!(ACC.amountOf(u.amount) > 0)) { deny('记一笔账要写 amount（金额，数字）'); continue; }
+        if (!u.cause) { deny('账目要带 cause（这笔账是怎么来的）'); continue; }
+        u.who = who; u.amount = ACC.amountOf(u.amount);
+      }
     }
     if (u.type === '框架') {
       // AI 只能**提议**给世界长词/型/律；合不合法（形式、上限、边界）由引擎说了算（v2.08 起无档位）
@@ -601,7 +657,9 @@ function writeMemory(data, mem, opts) {
     while (same.length >= CAP_TAGS[capTag]) { const old = same.shift(); delete data.memories[old.id]; g.capped += 1; }
   }
   const id = data.id('mem');
-  const m = Object.assign({ id, owner: mem.owner, content: mem.content, tags: mem.tags || [], impact: mem.impact, t: mem.t, lastActivation: mem.t, activations: 1, repeat: false }, mem.extra || {});
+  /* v3.9：记忆也带**轮次** —— 用户要求「所有产出的数据都要打上标记：这是哪一轮-什么事件」。
+     记忆的「什么事件」就是它的 tags 与 content；轮次原来只能靠 t 反推（同一世界日里根本分不出来）。 */
+  const m = Object.assign({ id, turn: (mem.turn != null ? mem.turn : ((data.current && data.current.turnN) || 0)), owner: mem.owner, content: mem.content, tags: mem.tags || [], impact: mem.impact, t: mem.t, lastActivation: mem.t, activations: 1, repeat: false }, mem.extra || {});
   m.weight = Math.max(1, Math.round(memDepth(data, m, mem.t)));   // v2.04：初值也走同一处（不再手写 impact）
   data.memories[id] = m;
   g.pass += 1;

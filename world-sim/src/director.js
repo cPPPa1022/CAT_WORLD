@@ -36,9 +36,9 @@ async function genPerson(data, cfg, req) {
   if (AI.isLive(cfg)) {
     try {
       const o = await AI.llmJSONDeep(cfg, [
-        { role: 'system', content: '你是【世界模拟器】的人物生成器。根据需求生成一个符合世界时代/基调的人物（只需骨架，不要长篇）。输出 JSON（都是中文，字符≤60）：{"name":"人名","role":"身份/职业","surface":"表面一句","hidden":"隐藏一句","appearance":"外貌一句","backstory":"背景一句"}' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的人物生成器。根据需求生成一个符合世界时代/基调的人物（只需骨架，不要长篇）。输出 JSON（都是中文，字符≤60）：{"name":"人名","role":"身份/职业","surface":"表面一句","hidden":"隐藏一句","appearance":"外貌一句","backstory":"背景一句"}') },
         { role: 'user', content: JSON.stringify({ 需求: req, 时代: (data.meta && data.meta.eraLabel) || (data.meta && data.meta.era) || '' }) }
-      ], () => null, Math.min(1024, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (o && !o.__fallback && (o.name || o.role)) fix = o;
     } catch (e) { DEG.hit("director.js", e); }
   }
@@ -79,9 +79,9 @@ async function genPlace(data, cfg, req) {
   if (AI.isLive(cfg)) {
     try {
       const o = await AI.llmJSONDeep(cfg, [
-        { role: 'system', content: '你是【世界模拟器】的地点生成器。生成一个符合世界基调的新地点（一句话名字+一句描述，中文）。输出 JSON：{"name":"地点名","desc":"一句话描述","tags":["室外|室内|店铺|住宅"]}' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的地点生成器。生成一个符合世界基调的新地点（一句话名字+一句描述，中文）。输出 JSON：{"name":"地点名","desc":"一句话描述","tags":["室外|室内|店铺|住宅"]}') },
         { role: 'user', content: JSON.stringify({ 需求: req, 时代: (data.meta && data.meta.eraLabel) || '' }) }
-      ], () => null, Math.min(512, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (o && o.name) { name = String(o.name).slice(0, 20); desc = String(o.desc || '').slice(0, 80); }
     } catch (e) { DEG.hit("director.js", e); }
   }
@@ -109,9 +109,9 @@ async function genItem(data, cfg, req) {
   if (AI.isLive(cfg)) {
     try {
       const o = await AI.llmJSONDeep(cfg, [
-        { role: 'system', content: '你是【世界模拟器】的物品生成器。生成一件符合场景/年代的物品。输出 JSON：{"name":"物品名","price":价格数字,"desc":"一句描述"}' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的物品生成器。生成一件符合场景/年代的物品。输出 JSON：{"name":"物品名","price":价格数字,"desc":"一句描述"}') },
         { role: 'user', content: JSON.stringify({ 需求: req }) }
-      ], () => null, Math.min(512, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (o && o.name) { name = String(o.name).slice(0, 20); price = Math.max(0, Number(o.price) || 2); }
     } catch (e) { DEG.hit("director.js", e); }
   }
@@ -136,9 +136,9 @@ async function genOrg(data, cfg, req) {
   if (AI.isLive(cfg)) {
     try {
       const o = await AI.llmJSONDeep(cfg, [
-        { role: 'system', content: '你是【世界模拟器】的机构生成器。生成一个符合世界时代/基调的机构或组织（只需骨架）。输出 JSON（中文，每项≤40字）：{"name":"机构名","role":"它是干什么的","surface":"外人看到的样子","hidden":"内里的算计/秘密"}' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的机构生成器。生成一个符合世界时代/基调的机构或组织（只需骨架）。输出 JSON（中文，每项≤40字）：{"name":"机构名","role":"它是干什么的","surface":"外人看到的样子","hidden":"内里的算计/秘密"}') },
         { role: 'user', content: JSON.stringify({ 需求: req, 时代: (data.meta && data.meta.eraLabel) || (data.meta && data.meta.era) || '' }) }
-      ], () => null, Math.min(512, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (o && o.name) { name = String(o.name).slice(0, 20); role = String(o.role || '').slice(0, 40); surface = String(o.surface || '').slice(0, 40); hidden = String(o.hidden || '').slice(0, 40); }
     } catch (e) { DEG.hit("director.js", e); }
   }
@@ -189,9 +189,9 @@ async function genAction(data, cfg, req) {
   if (AI.isLive(cfg)) {
     try {
       const o = await AI.llmJSONDeep(cfg, [
-        { role: 'system', content: '你是【世界模拟器】的规则生成器。根据需求产出一个"玩家可触发的新动作"，动作效果只能使用这些白名单效果类型：' + EFFECTS.join(',') + '（参数：deduct_money{amount} / earn_money{amount} / add_item{name} / add_entity{kind,name,atScene} / move_to{place} / send_msg{to,text} / ledger{desc} / set_flag{key,value}）。输出 JSON：{"trigger_patterns":["玩家话术2-3条"]... 实际上请输出 {"id":"动作id","trigger_patterns":["话术"],"preconditions":[],"effects":[{"type":"deduct_money","amount":20}]}' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的规则生成器。根据需求产出一个"玩家可触发的新动作"，动作效果只能使用这些白名单效果类型：' + EFFECTS.join(',') + '（参数：deduct_money{amount} / earn_money{amount} / add_item{name} / add_entity{kind,name,atScene} / move_to{place} / send_msg{to,text} / ledger{desc} / set_flag{key,value}）。输出 JSON：{"trigger_patterns":["玩家话术2-3条"]... 实际上请输出 {"id":"动作id","trigger_patterns":["话术"],"preconditions":[],"effects":[{"type":"deduct_money","amount":20}]}') },
         { role: 'user', content: JSON.stringify({ 需求: req, 时代: (data.meta && data.meta.eraLabel) || '' }) }
-      ], () => null, Math.min(1024, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (o && o.id && Array.isArray(o.effects) && o.effects.length) act = o;
     } catch (e) { DEG.hit("director.js", e); }
   }
@@ -216,9 +216,9 @@ async function genNews(data, cfg, req) {
   if (AI.isLive(cfg)) {
     try {
       const o = await AI.llmJSONDeep(cfg, [
-        { role: 'system', content: '你是【世界模拟器】的新闻/传闻生成器。上游 AI（消息/事件链）把料交给你，你产出一条镇上会传开的新闻条目。输出 JSON：{"title":"标题","summary":"一句话（口语化、可当谈资）","severity":"低|中"}' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的新闻/传闻生成器。上游 AI（消息/事件链）把料交给你，你产出一条镇上会传开的新闻条目。输出 JSON：{"title":"标题","summary":"一句话（口语化、可当谈资）","severity":"低|中"}') },
         { role: 'user', content: JSON.stringify({ 素材: src, 来源: payload.from || '', 时间: payload.t || '', 时代: (data.meta && data.meta.eraLabel) || '' }) }
-      ], () => null, Math.min(768, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (o && o.title) { title = String(o.title).slice(0, 60); summary = String(o.summary || '').slice(0, 160); sev = String(o.severity || '低'); }
     } catch (e) { DEG.hit("director.js", e); }
   } else if (/火|着|偷|警|炸|死|救|抓/.test(src)) {

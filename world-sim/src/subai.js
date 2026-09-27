@@ -24,9 +24,9 @@ async function subCalc(data, cfg, opts) {
       世界基调: (data.meta && data.meta.era) || '', 烈度上限: (data.meta && data.meta.maxSeverity) || 'L2'
     };
     const out = await AI.llmJSON(cfg, [
-      { role: 'system', content: '你是【世界模拟器】的副 AI-计算。输入结构化世界快照（不含正文与对话）。只输出事件候选 JSON：{"candidates":[{"text":"一句话候选","type":"环境|遭遇|日常","expireM":分钟数,"sev":"低"}]}，1~3 条。候选必须贴合世界基调与在场人物，烈度不超过 L2（日常/小冲突），禁止重大事件凭空发生，禁止编造已有事实。除了"不越边界"之外，选什么题材、怎么描写、什么时候合适，都由你自行判断——没有注明的地方就是你的自由。' },
+      { role: 'system', content: AI.withCharter('你是【世界模拟器】的副 AI-计算。输入结构化世界快照（不含正文与对话）。只输出事件候选 JSON：{"candidates":[{"text":"一句话候选","type":"环境|遭遇|日常","expireM":分钟数,"sev":"低"}]}，1~3 条。候选必须贴合世界基调与在场人物，烈度不超过 L2（日常/小冲突），禁止重大事件凭空发生，禁止编造已有事实。除了"不越边界"之外，选什么题材、怎么描写、什么时候合适，都由你自行判断——没有注明的地方就是你的自由。') },
       { role: 'user', content: JSON.stringify(input) }
-    ], () => null, Math.min(2048, AI.cfgMax(cfg)));
+    ], () => null, AI.cfgMax(cfg));
     if (!out || out.__fallback || !Array.isArray(out.candidates)) return [];
     return out.candidates.slice(0, 3);
   } catch (e) { return []; }
@@ -84,9 +84,9 @@ async function subEdit(data, cfg, nowIso) {
     const stream = (data.ledger || []).filter(l => l.t >= dayStart && (l.type !== '交易拒绝')).slice(-20).map(l => ({ 时间: (l.t || '').slice(5, 16), 类型: l.type, 内容: l.desc }));
     if (!stream.length) return [];
     const out = await AI.llmJSON(cfg, [
-      { role: 'system', content: '你是【世界模拟器】的副 AI-编辑。输入近 24 小时事件流（结构化）。只输出 JSON：{"news":[{"title":"标题","summary":"一句话摘要","tags":["标签"],"region":"区域","severity":"低|中|高|灾难（高/灾难=重大事件，必须此前有过风声/前兆，否则会被引擎拦下）","impact":{"时长":"瞬间|短期|长期","范围":"个人圈|本地区|全国|世界"}}]}，0~5 条。只收录值得传的（重要度≥中或与玩家相关）；与既有世界事实冲突的不要写；严重性超过世界烈度上限的不要写。除此之外——哪条值得报道、怎么起标题、用什么措辞，由你自行判断，没有注明的就是你的自由。' },
+      { role: 'system', content: AI.withCharter('你是【世界模拟器】的副 AI-编辑。输入近 24 小时事件流（结构化）。只输出 JSON：{"news":[{"title":"标题","summary":"一句话摘要","tags":["标签"],"region":"区域","severity":"低|中|高|灾难（高/灾难=重大事件，必须此前有过风声/前兆，否则会被引擎拦下）","impact":{"时长":"瞬间|短期|长期","范围":"个人圈|本地区|全国|世界"}}]}，0~5 条。只收录值得传的（重要度≥中或与玩家相关）；与既有世界事实冲突的不要写；严重性超过世界烈度上限的不要写。除此之外——哪条值得报道、怎么起标题、用什么措辞，由你自行判断，没有注明的就是你的自由。') },
       { role: 'user', content: JSON.stringify({ 世界: (data.meta && data.meta.name) || '', 时代: (data.meta && data.meta.era) || '', 烈度上限: (data.meta && data.meta.maxSeverity) || 'L2', 事件流: stream }) }
-    ], () => null, Math.min(2048, AI.cfgMax(cfg)));
+    ], () => null, AI.cfgMax(cfg));
     if (!out || out.__fallback || !Array.isArray(out.news)) return [];
     return out.news.slice(0, 5);
   } catch (e) { return []; }
@@ -99,9 +99,9 @@ async function subDigest(data, cfg, sinceIso) {
     const stream = (data.ledger || []).filter(l => l.t >= sinceIso).slice(-20).map(l => ({ 时间: (l.t || '').slice(11, 16), 类型: l.type, 内容: l.desc }));
     const msgs = (data.messages || []).filter(m => m.t >= sinceIso && m.to === 'player' && m.body).map(m => m.body);
     const out = await AI.llmJSON(cfg, [
-      { role: 'system', content: '你是【世界模拟器】的副 AI-摘要。玩家睡着了。输入玩家睡着期间的结构化事件与消息。输出 JSON：{"digest":"200字以内中文简报：你睡着/离开期间，世界发生了什么与你（可能）相关的事；没有则不写"}。简报里挑什么、怎么说，由你自行判断——没有注明的地方就是你的自由。' },
+      { role: 'system', content: AI.withCharter('你是【世界模拟器】的副 AI-摘要。玩家睡着了。输入玩家睡着期间的结构化事件与消息。输出 JSON：{"digest":"200字以内中文简报：你睡着/离开期间，世界发生了什么与你（可能）相关的事；没有则不写"}。简报里挑什么、怎么说，由你自行判断——没有注明的地方就是你的自由。') },
       { role: 'user', content: JSON.stringify({ 事件: stream, 消息: msgs }) }
-    ], () => null, Math.min(1024, AI.cfgMax(cfg)));
+    ], () => null, AI.cfgMax(cfg));
     if (!out || out.__fallback || !out.digest) return null;
     return String(out.digest).slice(0, 400);
   } catch (e) { return null; }

@@ -4,7 +4,7 @@ const DEG = require('./degraded');
 const fs = require('node:fs');
 const zlib = require('node:zlib');
 const AI = require('./ai');
-const { fmtISO, dayPart } = require('./runtime');
+const { fmtISO, dayPart, addMinutes } = require('./runtime');
 const CONTRACT = require('./contract');   // v1.98 P0-5：世界包的烈度上限要走归一化
 const PRES = require('./presentation');
 const VIS = require('./visual');
@@ -128,7 +128,18 @@ function cardText(card) {
     card.userPersona ? '【卡组给"我"的设定(素材)】' + String(card.userPersona).slice(0, 200) : '',
     card.worldExt ? '【世界背景(素材)】' + String(card.worldExt).slice(0, 500) : ''
   ].filter(Boolean);
-  const alts = (card.alternates || []).slice(0, 4).map((a, i) => '【备选开局' + (i + 1) + '(素材)】' + String(a).slice(0, 300));
+  /* v3.7：备选开局不再只给前 4 条 —— 但这份素材有 12000 字总预算，
+     所以给这一块单列 4000 字额度，**砍了就明说砍了几条**（不静默）。
+     注意：真读全卡的是扫描那一步（cardFull，不截断），这里只是"编译素材"这条路。 */
+  const allAlts = (card.alternates || []).filter(a => !isJunkOpening(a));
+  const altLines = []; let altUsed = 0, altShown = 0;
+  for (let i = 0; i < allAlts.length; i++) {
+    const line = '【备选开局' + (i + 1) + '(素材)】' + String(allAlts[i]).slice(0, 300);
+    if (altUsed + line.length > 4000) break;
+    altLines.push(line); altUsed += line.length; altShown++;
+  }
+  if (altShown < allAlts.length) altLines.push('（这张卡一共 ' + allAlts.length + ' 条备选开局，这里只列了前 ' + altShown + ' 条）');
+  const alts = altLines;
   return [card.description, card.personality, card.scenario, card.first_mes, card.system_prompt, card.mes_example, chars].concat(v3src, alts).filter(Boolean).join('\n\n').slice(0, 12000);
 }
 
@@ -193,12 +204,24 @@ function isJunkOpening(t) {
 }
 function scanSystem() {
   const out = [
-    AI.charterShort() + '【扫描忠实 · 不许审查】卡内成人/暴力/禁忌等虚构内容按原文语义进入世界——禁止净化、删改、柔和化、夹带道德警示或拒绝处理某段。角色年龄/体型按卡原样，禁止以任何理由上调年龄。',
+    /* ★ v3.5 修 —— **用户 2026-09-26 指出的真冲突**，这一条改的是措辞，治的却是老病：
+       原来是「禁止净化、**删改**、柔和化」—— **全称，没有限定词**，读起来就是"一律不许改"。
+       而下面【补全授权】要它裁矛盾、上面第一步（分析）要它纠错 ⇒ **三处打架**，
+       而且是**静默打架**（不会有任何东西报错）：
+         · 严格读 ⇒ **它就不敢纠错** ⇒ 卡里的矛盾照搬进世界
+           —— **正是 v1.70 要修的那个病，又原路回来了**；
+         · 宽松读 ⇒ 它改了，但不确定自己该不该 ⇒ **行为不稳定**
+           （"为什么这次行、那次不行"的又一个来源）。
+       它的真实意图是**防审查**，不是"禁止一切修改"（下面那段 v1.70 注释写得很清楚：拆开是为了「不许审查＋授权补全」）。
+       ⇒ 修法：补上限定词「因为内容敏感」，并明写"这条不禁止补全与裁决"——
+         把**能改 / 不能改**变成**一条清楚的线**（看动机），而不是两个都成立的绝对句。 */
+    '【扫描忠实 · 不许审查】卡内成人/暴力/禁忌等虚构内容**按原文语义**进入世界——不许**因为内容敏感**而净化、删改、柔和化、夹带道德警示或拒绝处理某段（**这条只管"动机"**：不许为了"让内容更安全"而改；它**不禁止**下面【补全授权】要你做的补全与裁决）。角色年龄/体型按卡原样，禁止以任何理由上调年龄。',
     /* v1.70 用户：「我要的是补全」「不能靠正则去猜」。
        原来这句写的是「你是**转换器**，不是审阅者…**禁止省略、改写**」——把"不许审查"和"不许改写"写进了一句话，
        结果连**补全**也一起禁掉了，AI 只能照抄，卡里的矛盾也照搬进世界。现在两句拆开：
        不许审查（留）＋ 明确授权补全与裁决（新）。 */
     '【补全授权 · 必须补】你不是搬运工：**卡里没写的，你来补；卡里自相矛盾的，你来裁。**'
+    + String.fromCharCode(10) + '  · **和上面那条的分工**：上面管**动机**（不许为"更安全"而改），这条管**世界自洽**（该改的必须改）。判断改不改，只看一件事：这次改动是为了让世界自洽，还是为了让内容更安全？**后者一律禁止，前者一律照办。**'
     + String.fromCharCode(10) + '  · 卡没写的关系、经历、作息、缺的外貌维度、缺的地点 → 你补，依据是卡的基调与已有设定，不许用现实社会模板硬套。'
     + String.fromCharCode(10) + '  · 卡自相矛盾（正文 vs 世界书 / 性格 vs 行为 / 时代 vs 细节 / 时间线 / 称呼不统一 / 废弃残稿）→ 你裁决，取更像作者最终意图的那一边。'
     + String.fromCharCode(10) + '  · 补的和裁的都要**记账**（见下方 filled / conflicts 字段），不许默默改。'
@@ -227,6 +250,15 @@ function scanSystem() {
     '  这类卡常常 description 为空、也没有 user_persona，玩家身份**只能从这里取**。',
     '  取到了就用作 player.name，并且**那个名字不要再当成别的角色或地名**（例：开场白说"吟行，真是不好意思" → 吟行就是玩家；把地点命名成"吟行的公寓"、把邻居写成"吟行隔壁"都是错的）。',
     '  实在取不到，player.name 用「你」。**禁止凭空编名字和身份**——卡里没有任何依据却写成"赵子俊 / 富二代 / 26 岁"这类，属于严重错误。',
+    /* ★ v3.20（用户实测）：卡里白纸黑字写着【当前余额：1,001,234.00元】，
+       而存档里给玩家的是"15000 现金 + 12000 电子"—— 因为扫描这一步的 player 里**根本没有钱这个字段**，
+       钱是后面按"身份关键词 → 财富档 → 月数换算"猜出来的（"普通"=3 个月 = 15000）。
+       于是同一个世界里有两个钱数：卡说一百万，存档说两万七，AI 在提示词里两个都看得见，写出来的正文必然打架。
+       规矩：**卡里写明了就照抄；没写就不给**（不给＝让引擎按时代与身份推，那是"没依据"时的合法兜底）。 */
+    '【钱 · 照抄，不许推测】卡正文 / 开场白 / 世界书里**写明了金额**（余额、现金、存款、账户、红包、奖励、"系统给的"）→',
+    '  照抄进 player.money（**数字一个字符都不许改**；卡里说是"现金 / 兜里 / 手上"的进 cash，说是"账户 / 电子 / 微信 / 卡里"的进 digital）。',
+    '  看见【当前余额：1,001,234.00元】这种就写 cash: 1001234 或按卡里的说法分 —— 不许四舍五入、不许按"这个身份大概有多少钱"改。',
+    '  **卡里没有写明金额 → 整个 money 字段省略**（引擎会按时代与身份给一个合理的），禁止编一个数。',
     '',
     '【字段格式 template ≠ 答案】下面 JSON 里凡是用 <尖括号> 包住的都是**占位符**，必须按**本卡**重写。',
     '  **照抄示例里的值视为错误**——世界不同，theme / carries / currency / era 全都不一样，先判断这张卡是什么世界，再选。',
@@ -240,12 +272,20 @@ function scanSystem() {
     '  "time": "<开场时刻 ISO，如 1996-06-14T20:45:00；按卡的年代来>", "weather": "<当场天气>",',
     /* v1.71 用户：「玩家那边 身世是残缺的，这个不能按照 npc 那套流程走，需要一开始给出来（比较完善的，我是谁？我来自哪里？）」
        卡开局这条路原来只给「来历一句话」，于是玩家身世永远是半截的。现在要求一开始就给全。 */
-    '  "player": { "name": "<从开场白的称呼里取；取不到才用「你」>", "age": "<年龄>", "identity": "<我是谁/我为什么在这里（必须具体，禁止待定）>", "origin": "<我来自哪里：籍贯/出身/怎么到这儿来的（2~3 句，写清楚）>", "backstory": "<我这一生到此刻为止：成长经历、经历过的关键的事、带着什么、失去过什么——**必须完整具体**，禁止「身份待定/初来乍到/随缘」这类空话>", "appearance": "<你的样貌>", "personality": "<表面性格>", "inner": "<内心>", "desire": "<我现在想要什么>", "ability": "<我会什么>", "shadows": [ { "hint": "<你隐约记得、但还没想起来的事（一句话，口吻像「你好像在哪见过他」）>", "text": "<那件事的真相（现在不给玩家看，剧情触发时才想起来）>" } ] },',
+    '  "player": { "name": "<从开场白的称呼里取；取不到才用「你」>", "age": "<年龄>", "identity": "<我是谁/我为什么在这里（必须具体，禁止待定）>", "origin": "<我来自哪里：籍贯/出身/怎么到这儿来的（2~3 句，写清楚）>", "backstory": "<我这一生到此刻为止：成长经历、经历过的关键的事、带着什么、失去过什么——**必须完整具体**，禁止「身份待定/初来乍到/随缘」这类空话>", "appearance": "<你的样貌>", "personality": "<表面性格>", "inner": "<内心>", "desire": "<我现在想要什么>", "ability": "<我会什么>", "shadows": [ { "hint": "<你隐约记得、但还没想起来的事（一句话，口吻像「你好像在哪见过他」）>", "text": "<那件事的真相（现在不给玩家看，剧情触发时才想起来）>" } ], "money": { "currency": "<币种>", "cash": <现金数字>, "digital": <卡里/账户里的数字> } },',
     '  "worldbook": [ { "no": <条目序号，与上面【世界书·条目N】一致>, "route": "归档|翻译|丢弃", "why": "<一句话理由>" } ],',
-    '  "npcs": [ { "id": "<npc1>", "name": "<角色真名（别用卡标题当人名；角色名藏在正文/世界书里时提取）>", "role": "<身份/职业一句话>", "surface": "<表面性格>", "hidden": "<隐藏性格/真实动机>", "appearance": "<外观用刚性锚点九维度写（分号分隔）>", "relHow": "<这个关系怎么来的：认识多久/因为什么事/现在什么状态>", "rel": "<与玩家的关系>", "bond": "<关系基调词——**只能从这六个里选一个**：恋人|亲人|旧识|认识|敌对|初识。它决定开局你认不认识 TA：恋人/亲人/旧识=一开局就熟，认识/敌对=知道名字，初识=只见过一面>", "desire": "<TA 此刻最想做的事，一句，具体>", "atStart": "<开场那一刻 TA 在哪 —— **必须原样照抄 places 里的某个 id（就是 p1/p2/p3 这种），不要写地名、不要自己起 id**；人不在本小区就留空>", "home": "<TA 住在哪个地点 id（必须从本卡的 places 里选）>", "workPlace": "<TA 白天常待的地点 id（也从 places 里选）；常年在外/无固定去处就留空>", "workFrom": "<08:00>", "workTo": "<21:00>" } ],',
+    '  "npcs": [ { "id": "<npc1>", "name": "<角色真名（别用卡标题当人名；角色名藏在正文/世界书里时提取）>", "role": "<身份/职业一句话>", "surface": "<表面性格>", "hidden": "<隐藏性格/真实动机>", "appearance": "<外观用刚性锚点九维度写（分号分隔）>", "relHow": "<这个关系怎么来的：认识多久/因为什么事/现在什么状态>", "rel": "<与玩家的关系>", "bond": "<关系基调 —— **用你自己的话写，别为了套词而改掉卡里真实的关系**。可参考这六个：恋人|亲人|旧识|认识|敌对|初识，但它们只是例子：卡里写「从小一块儿在河里摸鱼」就写青梅竹马/发小，写「三年二班班长」就写同班同学兼对头，写「他爹欠我爹钱」就写债主之子……**关系每张卡都不一样，一棒子打死会把人写成陌生人**。它决定开局你认不认识 TA：熟人（发小/同学/邻居/同事/亲戚…）=一开局就知道名字、记得住脸；只打过照面=只见过一面>", "knows": "<**玩家开局认不认得 TA** —— 认得（叫得出名字、记得住脸）| 只打过照面 | 从没见过。它和 bond 是两件事：bond 是关系底色，knows 是玩家的认知起点。写「认得」的人，一开局名字就是通的>", "desire": "<TA 此刻最想做的事，一句，具体>", "atStart": "<开场那一刻 TA 在哪 —— **必须原样照抄 places 里的某个 id（就是 p1/p2/p3 这种），不要写地名、不要自己起 id**；人不在本小区就留空>", "home": "<TA 住在哪个地点 id（必须从本卡的 places 里选）>", "workPlace": "<TA 白天常待的地点 id（也从 places 里选）；常年在外/无固定去处就留空>", "workFrom": "<08:00>", "workTo": "<21:00>" } ],',
     '  "places": [ { "id": "<p1>", "name": "<初始场景名>", "tags": ["<室内|室外>"], "layout": { "north": ["<贴着北墙/里侧的东西 0~3 个>"], "east": ["<东侧/右侧>"], "south": ["<南侧/靠门这边>"], "west": ["<西侧/左侧>"], "floor": ["<屋子中间摆着的东西 0~4 个>"] }, "geo": ["<区域>","<地方>"], "openHours": "<07:30-22:00>", "edges": [ { "to": "<p2>", "level": "<同街区>", "minutes": <6> } ] } ],',
-    '  "firstScene": "情景推演：把主开场白语义重写为剧本式世界开场——保氛围/人物/冲突，可直接开演；≤650字，不逐字搬运；超长时保留最有戏份的段落，其余提炼进 premise",',
+    /* ★ v3.8：模板值里原来写着「情景推演：…」，模型把它当正文抄了回去 ——
+       实测（用户那局「靠山屯·赵家小院」）开场第一句就是「情景推演：1994年8月12日，星期五…」。
+       提示词的措辞不该长在玩家脸上：模板改成一句纯说明，并在下面【正文不许带帽子】里明令禁止。 */
+    '  "firstScene": "<把主开场白语义重写为剧本式世界开场——保氛围/人物/冲突，可直接开演；≤650字，不逐字搬运；超长时保留最有戏份的段落，其余提炼进 premise>",',
     '  "alternates": ["<备选开局（来自卡的 alternate_greetings，几条放几条；无则省略）>"],',
+    '',
+    '【正文不许带帽子】firstScene 与 alternates 里**直接就是正文**：不许以任何说明性前缀开头 ——',
+    '  「情景推演：」「以下是…」「世界开场：」「firstScene：」「（开场）」这类。',
+    '  实测踩过：模板里的一句说明被抄成了开场第一句，玩家一睁眼看到的是提示词。',
+    '  **第一句就该是画面或动作**（时间地点可以写进句子里，但不要用标签的口气宣布它）。',
     '  "seeds": [ "<剧情种子1>", "<剧情种子2>" ],',
     '  "premise": ["<开场之外的后半段剧情走向/卡暗示的发展（1-3条，一句一条；没有则省略）>"],',
     '  "rules": [ "<硬事实/世界规则1>" ],',
@@ -291,7 +331,7 @@ function scanSystem() {
     '如果卡是修仙/古代/末世：era 相应修改，carries 改为对应载体（古代 time 用 none，news 用 oral）。',
     '不要输出 JSON 之外的任何文字。'
   ];
-  return out.join(String.fromCharCode(10));
+  return AI.withCharter(out.join(String.fromCharCode(10)));
 }
 
 /* v1.70 第一步：**分析**（用户：「ai 把这卡读一遍然后做分析产出成我们需要的内容」）。
@@ -299,7 +339,7 @@ function scanSystem() {
    第二步（scanLLM）拿着这份分析稿去填表，才不会"为满足 schema 跳过长推理"。 */
 function analyzeSystem() {
   const out = [
-    AI.charterShort() + '你是【世界模拟器】的**世界分析师**。输入是一张酒馆角色卡的**全部内容**（卡正文 + 开场白 + 备选开局 + 世界书）。',
+    '你是【世界模拟器】的**世界分析师**。输入是一张酒馆角色卡的**全部内容**（卡正文 + 开场白 + 备选开局 + 世界书）。',
     '你的任务**不是翻译、不是填表**：是**读懂它、并且判断**。这一步**不要输出 JSON、不要代码块、不要复述原文大段**，只写中文分析稿。',
     '',
     '必须回答下面七件事，用小标题分段，写清楚，别客套。',
@@ -334,7 +374,9 @@ function analyzeSystem() {
     '## 三、关系网（最重要的一段）',
     '· **玩家 ↔ 每个人**：什么关系？**这个关系怎么来的**（认识多久 / 因为什么事 / 现在什么状态）。',
     '· **NPC ↔ NPC**：谁跟谁是什么关系（亲属 / 同事 / 旧识 / 仇人 / 上下级…），同样要说"怎么来的"。',
-    '· 每个人再给一个**基调词**（只能从这六个里选：恋人|亲人|旧识|认识|敌对|初识）——它决定开局玩家认不认识 TA。',
+    '· 每个人再给一个**关系基调**：**用你自己的话写真话**（发小／同班同学兼对头／继母／债主／点头之交……），',
+    '  六个老例子只是参考（恋人|亲人|旧识|认识|敌对|初识）—— **别为了套这六个词，把卡里真实的关系改掉**。',
+    '  它决定开局玩家认不认识 TA：熟人（发小/同学/邻居/同事/亲戚…）=一开局就知道名字、记得住脸；只打过照面=只见过一面。',
     '· 卡里**没写**的关系 → 标 `【卡未写】`，给出你的推断和依据。',
     '· 卡里**自相矛盾**的关系 → 标 `【矛盾】`，指出两边分别在哪、你倾向哪个、为什么。',
     '',
@@ -345,6 +387,23 @@ function analyzeSystem() {
     '## 五、矛盾清单',
     '把卡里所有自相矛盾的地方列出来：正文 vs 世界书 / 性格描述 vs 开场白行为 / 时代 vs 细节 / 设定 vs 能力 / 时间线 / 称呼与名字不统一 / 废弃残稿。',
     '每条给：**哪两处矛盾 / 建议取哪个 / 为什么**。',
+    /* ★ v3.5 · 用户 2026-09-26 定的规矩（原话）：
+       「矛盾点提出来 **纠错大概是很少的** 但如果出现错误 例如这里和那里对不上号
+         那**先纠错** 然后用**括号说明情况** 这里是被纠正过的 原文是什么意思 与哪里出现矛盾了」
+       三个要点，一个都不能少：
+         ① 提出来 —— 每条矛盾都要列出（不动手也算合格）；
+         ② **纠错要少** —— 只在"这里和那里真的对不上号"时才动手，不是见一个改一个；
+         ③ **留痕** —— 改过的地方必须带括号写明【原文 / 与哪条矛盾】，
+            否则读分析稿的人（以及后面的步骤）分不清"这是卡里写的"还是"AI 改的"。
+       为什么强调留痕：**改了不留痕，就等于把 AI 的判断伪装成作者的原意** ——
+       那是这个项目最忌讳的一类错（"AI 没说就别编"，见下方 v1.70 那些注释）。 */
+    '',
+    '**然后：能一句话解决的，就地改掉。** 判据是「**这里和那里真的对不上号**」（不是"我觉得这样更好"）：',
+    '  · 大部分矛盾**不用改**，列出来、说清取哪边就够了 —— **纠错要少，不要见一个改一个**。',
+    '  · 真要改的，改完**必须留痕**，就写在那个词/那句话后面，格式固定：',
+    '    `改后的内容（原文：「原来的写法」｜与 §N 的「哪一句」矛盾）`',
+    '  · 例：`1998 年（原文：「1996 年」｜与 §七 的「孩子已经上初中」矛盾）`',
+    '  · **不许不留痕地改**，也不许把"我改过"写成"卡里本来就是这样"。',
     '',
     /* v3.4：这一段原来让模型把核心冲突再展开一遍，与身份证「戏」重复 —— 而实测证明配额不够。
        现在只留最后一句，把省下的配额让给三、四两段（那两段才是真正长的）。 */
@@ -355,14 +414,31 @@ function analyzeSystem() {
     '开场白第一句话发生时：谁在场、谁在哪（隔壁？门外？外地？）、玩家在哪、什么时间。',
     '（这段最容易搞错，务必按开场白原文逐句核。）'
   ];
-  return out.join(String.fromCharCode(10));
+  return AI.withCharter(out.join(String.fromCharCode(10)));
 }
-async function analyzeLLM(cfg, card, onDelta) {
+/* ★ v3.5 · 分析**分包**（用户 2026-09-26：「分析要覆盖 50+ 项」+ 实测它一次写不完）。
+   实测证据：用户那张「东北萝莉」卡的分析稿 **5876 字、写到第四段就被输出上限截断** ——
+   而分析稿一共八段，**连一半都没写完**。所以"一次调用产出全部分析"这个假设本身不成立。
+
+   ★ 排法很讲究（决定钱）：**三包的 system 完全相同、卡正文都放在 user 的第一段，
+     只有末尾追加的"本包只写哪几段"不同。** ⇒ 前缀缓存命中第 1 包之后的两包，
+     卡只按**一次**计价。顺带也治了 §7.2 #4 那条"两次调用 system 不同 ⇒ 缓存从第 1 个字节就分叉"。 */
+const ANALYZE_PARTS = [
+  { id: 'a', name: '身份证 + 世界 + 谁是谁', secs: ['零', '一', '二'] },
+  { id: 'b', name: '关系网 + 已知与空白', secs: ['三', '四'] },
+  { id: 'c', name: '矛盾清单 + 最重要 + 开场实况', secs: ['五', '六', '七'] }
+];
+async function analyzeLLM(cfg, card, onDelta, part) {
   const text = cardFull(card);
+  const p = part || null;
+  const tail = p
+    ? (String.fromCharCode(10) + String.fromCharCode(10) + '【本包只写这几段】' + p.secs.join('、') + '（' + p.name + '）。'
+      + '**其余段落这一包一个字都不要写** —— 后面会有别的调用去写它们，你写了就是重复。只输出这几段的小标题与内容。')
+    : '';
   const r = await AI.llmText(cfg, [
     { role: 'system', content: analyzeSystem() },
-    { role: 'user', content: '卡名: ' + (card.name || '未命名') + String.fromCharCode(10) + '卡正文:' + String.fromCharCode(10) + text }
-  ], Math.min(8192, AI.cfgMax(cfg)), onDelta);
+    { role: 'user', content: '卡名: ' + (card.name || '未命名') + String.fromCharCode(10) + '卡正文:' + String.fromCharCode(10) + text + tail }
+  ], AI.cfgMax(cfg), onDelta);
   return String(r || '').trim();
 }
 /* ★ v3.4 · 从分析稿里**摘**出身份证（0 token、纯查表）。
@@ -414,10 +490,24 @@ function normIdentity(v) {
   return out;
 }
 async function scanLLM(cfg, card, analysis, onDelta) {
-  const text = cardFull(card);   // v1.25：全量（含世界书）——旧版只发 cardText，世界书一个字没进
-  const user = '卡名: ' + (card.name || '未命名') + String.fromCharCode(10) + '卡正文:' + String.fromCharCode(10) + text
-    + (analysis ? (String.fromCharCode(10) + String.fromCharCode(10) + '【先一步的分析稿 · 必须遵守】以下是通读整张卡得出的判断：关系网、已知与空白、矛盾与裁决建议。'
-      + '**按它来建世界**：空白处照它的判断补全，矛盾处照它的裁决取一边，并把补的/裁的记进 filled / conflicts。' + String.fromCharCode(10) + analysis) : '');
+  /* ★ v3.5 · **第二步只读分析稿，不再重读原文**（用户 2026-09-26 拍板）。
+     为什么这么改：原来是"分析 + 又把全卡发一遍"，第二步的输入是第一步的**超集** ——
+     于是"第一步给第二步减负"从来没发生过（实测 prompt_tokens：第 1 步 45366、**第 2 步 48265**，
+     第二步比第一步还大）。原文只读一次 ⇒ 那 +62% 的重复计价和"缓存吃不到"一起消失。
+
+     ⚠️ **降级路必须有**（Q4 的答案）：分析稿一旦为空（被拒答 / 截断 / 全挂），
+        第二步就**没有任何依据**了 —— 这时退回读原文，并且**明说准确度会下降**。
+        宁可多花一次原文的钱，也不能让它凭空建世界。 */
+  const user = analysis
+    ? ('世界名: ' + (card.name || '未命名')
+      + String.fromCharCode(10) + String.fromCharCode(10) + '【通读全卡得出的分析稿 · 这是你唯一的依据】'
+      + '以下是别人通读整张卡之后得出的判断：时代 / 谁是谁 / 关系网 / 已知与空白 / 矛盾与裁决 / 开场那一刻。'
+      + '**按它来建世界**：空白处照它的判断补全，矛盾处照它的裁决取一边，并把补的/裁的记进 filled / conflicts。'
+      + '（原文不在你手里 —— 分析稿没写到的，标【卡未写】并按卡的基调补，不许当成"卡里就是这样的"。）'
+      + String.fromCharCode(10) + analysis)
+    : ('卡名: ' + (card.name || '未命名') + String.fromCharCode(10) + '卡正文:' + String.fromCharCode(10) + cardFull(card)
+      + String.fromCharCode(10) + String.fromCharCode(10) + '（⚠️ 分析这一步**没有产出** —— 你只能靠原文自己判断。'
+      + '人物、关系、空白项的准确度会明显下降，这一局开局可不可信要说出来。）');
   const res = await AI.llmJSONDeep(cfg, [
     { role: 'system', content: scanSystem() },
     { role: 'user', content: user }
@@ -535,7 +625,16 @@ function scanWarnings(card, pack) {
   return out;
 }
 /* v1.77 关系基调 → 认知档位（stage）。宁松不严：AI 说了有关系，就不能显示成"你还不认识"。 */
-function stageFromBond(bondOf, relTxt) {
+function stageFromBond(bondOf, relTxt, knows) {
+  /* ★ v3.9 · 关系定义里新增一栏 **knows**（玩家开局认不认得 TA）—— 用户问「什么是定义？需要定义什么内容？」：
+     bond 是**关系底色**（她是谁、怎么来的），knows 是**玩家的认知起点**（我叫不叫得出名字、记不记得住脸）。
+     两件事分开写，就不用再拿一张词表去猜 —— AI 明说「认得」就是认得。 */
+  const k = String(knows || '').trim();
+  if (k) {
+    if (/从没见过|没见过|未曾谋面|素不相识/.test(k)) return 1;
+    if (/只打过照面|打过照面|一面之缘|见过一两面|见过几面/.test(k)) return 1;
+    if (/认得|叫得出|记得住|知道名字/.test(k)) return 3;
+  }
   const b = String(bondOf || '').trim();
   if (/恋人|情侣|爱人|夫妻|丈夫|妻子|配偶|亲人|亲属|家人|家属|父子|母子|母女|父女|兄弟|姐妹|手足|养母|养父|继母|继父|干妈|干爹|义母|义父|奶妈|乳母|岳母|婆婆|公公|嫂子|弟妹|姐夫|妹夫|叔叔|伯伯|姑姑|舅舅|婶|亲近|挚友|密友|旧识|青梅|发小|恩人/.test(b)) return 3;
   if (/认识|熟人|邻居|邻里|同事|同学|同窗|工友|老板|东家|下属|上司|掌柜|常客|主顾|朋友|搭档|合作|同门|师徒|敌对|仇|对头|冤家|宿敌|对手/.test(b)) return 2;
@@ -610,7 +709,9 @@ function heuristicPack(card) {
       }
       return (head || '你来到这家小店的门口。').slice(0, 560);
     })(),
-    alternates: (card.alternates || []).filter(a => !isJunkOpening(a)).slice(0, 4).map(a => String(a).slice(0, 400)),
+    /* v3.7：不再 slice(0,4)/slice(0,400) —— "本地猜"这条路也要把卡里的开场给全
+       （保留 isJunkOpening：运行提示 / 纯令牌 / 几乎没中文的条目仍然丢掉）。 */
+    alternates: (card.alternates || []).filter(a => !isJunkOpening(a)).map(a => String(a)),
     seeds: (function () {
       const paras = String(card.first_mes || '').split(/\n{2,}/).map(x => x.trim()).filter(Boolean);
       let head = ''; const tail = [];
@@ -656,6 +757,22 @@ function inferCarries(text) {
   return { time: 'phone', news: 'phone', map: 'phone', note: 'phone' };
 }
 
+/* ★ v3.8 · 开场正文的**输出侧清洗**（提示词的措辞不该长在玩家脸上）。
+   实测（用户 2026-09-27 那局「靠山屯」）：firstScene 第一句是「情景推演：1994年8月12日，星期五…」
+   —— 那正是本文件扫描模板里的一句说明被模型抄了回来（§7.1b ③ 记过，这次实测复现）。
+   两处一起治：模板里不再写这句（见下面 firstScene 那行），这里再把**已知的帽子**刮掉。
+   只刮白名单里那几个词（不碰正文）—— 免得把「1994年8月12日，星期五。」这种正常开头误伤。
+   与 gate.js 的 scrubNotes 同一思路：宁可多刮一层，也不要让玩家读到引擎的话。 */
+function scrubSceneLeak(t) {
+  let s = String(t == null ? '' : t).trim();
+  for (let i = 0; i < 3; i++) {                       // 最多三层（实测有「情景推演：以下是世界开场：…」这种叠加）
+    const before = s;
+    s = s.replace(/^[\s【\[（(]*?(情景推演|世界开场|开场白|开场|正文|firstScene|FirstScene)\s*[:：]\s*/, '');
+    s = s.replace(/^[\s【\[（(]*?(以下是|下面是|这是)[^。！？\n]{0,24}?(开场|开场白|正文|世界开场)\s*[:：]?\s*/, '');
+    if (s === before) break;
+  }
+  return s;
+}
 function normalizePack(pack) {
   if (!pack) return pack;
   pack.meta = pack.meta || {};
@@ -676,7 +793,7 @@ function normalizePack(pack) {
       try { require('./manifest').record(pack, { kind: '修复', id: 'sev', name: '烈度上限归一', schema: 'sev.norm.v1', by: 'engine', note: '世界包的 maxSeverity 非法（' + String(raw) + '）→ 回落 ' + CONTRACT.MAX_DEFAULT }); } catch (e) { DEG.hit('import.js', e); }
     }
   }
-  pack.meta.tools = PRES.deriveTools(carries, pack.meta.era, String(pack.meta.name || '') + ' ' + String(pack.firstScene || '').slice(0, 200));
+  pack.meta.tools = PRES.toolsFor(pack.meta, String(pack.meta.name || '') + ' ' + String(pack.firstScene || '').slice(0, 200));
   pack.weather = String(pack.weather || (carries.time === 'phone' ? '晴' : '山雾')).slice(0, 10);
   const t = String(pack.time || '');
   pack.time = /^\d{4}-\d{2}-\d{2}T/.test(t) ? t : '2026-01-01T20:00:00';
@@ -721,8 +838,11 @@ function normalizePack(pack) {
     n.workTo = n.workTo || '21:00';
     return n;
   });
-  pack.firstScene = String(pack.firstScene || '你站在这里，风从远处来。');
-  pack.alternates = Array.isArray(pack.alternates) ? pack.alternates.slice(0, 4).map(a => String(a).slice(0, 400)) : [];
+  pack.firstScene = scrubSceneLeak(pack.firstScene) || '你站在这里，风从远处来。';
+  /* v3.7：**不截断**（原 slice(0,4) + slice(0,400)）。这里是落库前的归一化 ——
+     截在这里最阴：预览看得到全文，进了世界就只剩前 400 字，
+     而"换个开场重开一局"用的正是落库的那一份。 */
+  pack.alternates = Array.isArray(pack.alternates) ? pack.alternates.map(a => String(a == null ? '' : a)) : [];
   pack.seeds = Array.isArray(pack.seeds) ? pack.seeds : ['（这里还藏着什么）'];
   pack.rules = Array.isArray(pack.rules) ? pack.rules : ['世界按自己的规则运转'];
   return pack;
@@ -771,6 +891,18 @@ function canonicalizePack(pack) {
   return pack;
 }
 
+/* ★ v3.7 · **开场池的唯一推导点**（用户 2026-09-27 问「兼容多少个开局？如果有 20 个开局呢？」）。
+   改前它被写在三处、而且三处都 `.slice(0, 4)` —— 一张 20 条备选开局的卡，
+   到玩家眼前永远只有 5 条（4 备选 + 主开场），**而且没有任何东西会说少给了**。
+   现在：**全部备选，按卡的顺序；主开场永远在最后**。
+   这个下标空间有三个消费者（packToData 的 greeting / server 的预览与卡盒 / meta.cards 的摘要），
+   必须是同一份 —— 所以只留这一个函数，别处一律调它。 */
+function openingPool(pack) {
+  const alts = Array.isArray(pack && pack.alternates) ? pack.alternates : [];
+  return alts.map(a => String(a == null ? '' : a)).filter(t => t.trim())
+    .concat([String((pack && pack.firstScene) || '你来到这里。')]);
+}
+
 function packToData(pack, opts) {
   pack = canonicalizePack(pack);
   const gen = (p) => p + '__' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -814,7 +946,14 @@ function packToData(pack, opts) {
     sceneLog: []
   };
   data.id = gen;
-  data.meta.tools = PRES.deriveTools(data.meta.carries, data.meta.era, data.meta.name);
+  /* ★ v3.5 收口：**工具清单只能有一个真相源**。
+     原来这里无条件重算，而建档那一步（本文件 :679）已经算过一次 ——
+     两次喂的 extraText 还不一样（建档带 firstScene、这里只带 name），
+     于是**同一个世界可能推出两套工具**，而两边都不会报错。
+     现在：**算过就用算过的那份**；没算过的（启发式包 / 旧包）才现算。 */
+  data.meta.tools = (Array.isArray(pack.meta && pack.meta.tools) && pack.meta.tools.length)
+    ? pack.meta.tools
+    : PRES.toolsFor(data.meta);
   const placeNames = {};
   (pack.places || []).forEach(p => { placeNames[p.id] = p.name; });
   (pack.places || []).forEach(p => {
@@ -866,7 +1005,10 @@ function packToData(pack, opts) {
     if (WEALTH_MONTHS[w] != null) months = WEALTH_MONTHS[w];
     else {
       const t = String((pl.identity || '') + (pl.role || '') + (pl.backstory || '') + (pl.ability || '') + (pl.desire || '') + (mdata.name || '')).slice(0, 500);
-      if (/富|不缺钱|不差钱|少爷|千金|富豪|有钱|家产|财阀|豪宅|豪车|暴富|拆迁|彩票|遗产|信托|集团|二世|公子哥/.test(t)) months = 600;
+      /* v3.20：补几个"这个世界自己说你有钱"的词。原来的表对**爽文/神豪/重生**这一类整卡失灵 ——
+         实测那张卡世界名叫「都市神壕之我爱装逼」，一个词都没命中，于是玩家兜里只有 3 个月的生活费。
+         仍然是兜底（卡里写明金额时走上面的 player.money，一个字都不会被这条覆盖）。 */
+      if (/富|不缺钱|不差钱|少爷|千金|富豪|有钱|家产|财阀|豪宅|豪车|暴富|拆迁|彩票|遗产|信托|集团|二世|公子哥|神豪|神壕|亿万|首富|挥金|豪门|返利|天降横财/.test(t)) months = 600;
       else if (/破产|欠债|负债|贫穷|穷|吃不上|拮据|落魄|月光|身无分文/.test(t)) months = 0.5;
       else months = 3;
     }
@@ -921,11 +1063,21 @@ function packToData(pack, opts) {
        规则：① AI 说在场 → 落点就是玩家所在处；② AI 没说 → 落点不许凭空等于玩家所在处（除非他自己家就是那儿）；
              ③ AI 没给任何位置 → 落点用他自己家。 */
     const PLAYER_START = 'p1';
-    let atStart = resolvePlace(n.atStart) || resolvePlace(n.atHome) || '';
+    const saidAt = resolvePlace(n.atStart);          // ★ AI **明说**的开场落点（兜底不算，见下）
+    let atStart = saidAt || resolvePlace(n.atHome) || '';
     if (!atStart) atStart = (home && home !== PLAYER_START) ? home : (data.entities['p2'] ? 'p2' : PLAYER_START);
+    /* ★ v3.13：**AI 明说「开场就在玩家这儿」的人，留下**。
+       实测（用户那局「靠山屯·1994」）：AI 把开场读对了 —— 秀秀/二丫/林晓梅/陈思思/大妮 的 atStart 全填 p1
+       （开场正文写的就是「五双眼睛，全盯着你手里那根线」），而下面那条 v1.88 的「互相校正」
+       （inScene 不是 true 就把人送回他自己家）**把这五个人一起清出了房间**。
+       那不是「一个位置填错了」，是一串：present(p1) 空 → 资料包「在场人物(全部)」空 →
+       主 AI 连一个能引用的 id 都没有（它只好自己编 npc_xiuxiu）→ 名字/外貌/此刻想要全进不了资料包。
+       现在：**明说在这儿 = 真的在这儿**；并且写 state.override，否则第一次日程 tick 又会把人拽走（§7.2c）。
+       （兜底值不算「明说」—— 那正是 v1.88 要防的「谁都在你屋里」。） */
+    const saidHere = (saidAt === PLAYER_START);
     if (n.inScene === true) atStart = PLAYER_START;
-    else if (atStart === PLAYER_START && home && home !== PLAYER_START) atStart = home;
-    n.inScene = (n.inScene === true);
+    else if (!saidHere && atStart === PLAYER_START && home && home !== PLAYER_START) atStart = home;
+    n.inScene = (n.inScene === true) || saidHere;
     data.entities[n.id] = { id: n.id, type: 'person', name: n.name, avatar: null, tags: [n.name, '初始角色'], indexes: { geo: [], org: [], family: [] },
       /* v3.1：同上 —— 空就是空，不写「待接触 / 待发现 / （未知）」。占位串会被 AI 当内容读走。 */
       profile: { identity: { 姓名: n.name, 身份: String(n.role || '') }, appearance: { 标志物: n.appearance || '' }, surface: { 待人: n.surface || '' }, hidden: { 真实: n.hidden || '' }, background: { 经历: n.backstory || '' }, schedule: {}, desires: { 现在想: n.desire || '' }, secrets: { 包袱: '' }, visual: { anchor: String(n.appearance || '').slice(0, 600), nine: VIS.parseNineDim(n.appearance), dynamic: {} } },
@@ -937,13 +1089,20 @@ function packToData(pack, opts) {
       state: { location: atStart, mood: '平静', fatigue: '中', hunger: '低', sleep: '正常' },
       trait: { lambda: 0.06, memory: '普通' },
       _schedule: { work, from: n.workFrom || '08:00', to: n.workTo || '21:00', home } };
+    /* v3.13：开场就在这儿的人**钉住 6 小时**（state.override 是引擎自己为「日程之外的挪人」准备的机制；
+       不写它，第一次 tickNPCs 就按日程把人送回他「该在」的地方 —— 而开场那一刻他确实在这儿）。 */
+    if (saidHere) {
+      data.entities[n.id].state.override = { reason: '开场就在这儿（AI 明说的 atStart）', place: PLAYER_START, until: addMinutes(now, 360) };
+    }
     data.relations['player'] = data.relations['player'] || {};
     const relTone = String(n.rel || '').slice(0, 40) || '未定（待补全）';   // v1.70：卡/AI 都没说就别编——原来是「起初素不相识」，那是在**编造事实**
     // v1.70：关系不再是"一个标签"，而是"标签 + 怎么来的"（用户：「开局没有设定好人物关系吗？」）
     const relHow = String(n.relHow || '').slice(0, 120);
     data.relations['player'][n.id] = { tone: relTone, how: relHow, causes: relHow ? [relHow] : [] };
     data.relations[n.id] = { player: { tone: relTone, how: relHow, causes: relHow ? [relHow] : [] } };
-    if (n.inScene) data.knowledge.knownPeople.push(n.id);
+    /* v3.8：开局「认识的人」= 关系够近的人（stage≥2），不再等于「此刻在你屋里的人」——
+       与印象档同一把尺子（runtime 里也有一条 stage≥2 → knownPeople 的同步，见 game.js）。 */
+    if (stageFromBond(String(n.bond || '初识'), n.rel, n.knows) >= 2) data.knowledge.knownPeople.push(n.id);
   });
   /* v1.70 NPC ↔ NPC 关系网（原来**开局完全没有**：relations 里只有 player↔npc 那一条）。
      ties 来自扫描第二步：a/b 是 npc id，rel 是什么关系，how 是怎么来的。 */
@@ -974,14 +1133,15 @@ function packToData(pack, opts) {
   // 多开局（酒馆原生 alternate_greetings）：进入时由用户选定一个作为本局首帧，其余作备用（meta.greetings）
   // opts.greeting = openingPool 下标（0 = 第一条备用开局；无备用时即主开场）；不传 / 越界 = 0
   // 池与 packPreview 的 openingList 严格一致：备选最多 4 条在前，主开场在最后
-  const openingPool = ((pack.alternates && pack.alternates.length) ? pack.alternates : []).slice(0, 4).concat([String(pack.firstScene || '你来到这里。')]);
-  const pickAt = (opts && Number.isInteger(opts.greeting)) ? Math.max(0, Math.min(opts.greeting, openingPool.length - 1)) : 0;
-  const picked = openingPool[pickAt];
-  data.meta.greetings = openingPool.slice(0, 5);
+  const pool = openingPool(pack);                       // v3.7：唯一推导点（全部备选 + 主开场）
+  const pickAt = (opts && Number.isInteger(opts.greeting)) ? Math.max(0, Math.min(opts.greeting, pool.length - 1)) : 0;
+  const picked = pool[pickAt];
+  data.meta.greetings = pool;                           // v3.7：全存（原 slice(0,5)）—— 那是"换个开场重开一局"的料
   data.meta.usedGreeting = picked;
-  data.sceneLog.push({ t: now, type: 'stage-tag', text: '[' + startName + ' · ' + dayPart(now) + ' · ' + data.current.weather + ']' });
-  data.sceneLog.push({ t: now, type: 'narration', text: picked.slice(0, 1200) });
-  data.sceneLog.push({ t: now, type: 'narration', text: '（这是开场。自由输入你想做的事，例如：上前打个招呼）' });
+  /* v3.9：开场的三条也带轮次（0 = 开场，还没走任何一回合）—— 「第几轮说了什么」从头就是齐的。 */
+  data.sceneLog.push({ t: now, turn: 0, type: 'stage-tag', text: '[' + startName + ' · ' + dayPart(now) + ' · ' + data.current.weather + ']' });
+  data.sceneLog.push({ t: now, turn: 0, type: 'narration', text: picked.slice(0, 1200) });
+  data.sceneLog.push({ t: now, turn: 0, type: 'narration', text: '（这是开场。自由输入你想做的事，例如：上前打个招呼）' });
   data.impressions = {};
   (pack.npcs || []).forEach(n => {
     /* v1.88：原来 `if (!n.inScene) return;` —— **只给在场的人建档**。
@@ -993,7 +1153,7 @@ function packToData(pack, opts) {
        原来只认六个词，而 schema 里**没告诉 AI 是哪六个** → AI 写「邻居/养母/同事」全不匹配 → 一律 stage 1
        （认知门控判定"只见过一面"，名字也被挡）→ 点人物全不认识。
        现在：词表已写进 schema；这里再兜一层 —— **AI 明确说了有关系，就不该算"陌生人"**。 */
-    const stageOf = stageFromBond(bondOf, n.rel);
+    const stageOf = stageFromBond(bondOf, n.rel, n.knows);
     /* ★ v2.13：两处修（用户实测「靠山屯」那局，开场一次糊了 21 条外貌串）——
        ① 原来把**生图锚点（九维外貌）**当成 action beat 推上屏：
           「（方脸，寸头，浓眉；鼻梁宽，嘴唇厚；皮肤黑红，有晒斑；体型壮实，肚子微凸；身高比村）」
@@ -1011,7 +1171,16 @@ function packToData(pack, opts) {
       }
       return String(n.surface || n.name || "一个陌生面孔").slice(0, 24);
     })();
-    data.impressions[n.id] = { stage: (n.inScene ? stageOf : 1), seen: seenTxt, traits: [], notes: [], bonds: [bondOf === '初识' ? '还不认识' : ('已认识——' + String(n.rel || bondOf).slice(0, 20))], nameKnown: n.inScene ? n.name : null };
+    /* ★ v3.8 · **「认不认识」由关系说了算，不由「此刻在不在你屋里」说了算**。
+       实测（用户 2026-09-27 报案）：「陈思思是旧识，会记不住脸吗？很明显这是乡村爱情故事一样的，
+       会记不住？不符合逻辑」—— 原来这里是 (n.inScene ? stageOf : 1)：
+       因为 inScene 是空的（见 normalizePack 里那条兜底的条件），**22 个人全被判成「只见过」**
+       ⇒ 名字门控全关 ⇒ 人物面板 17 张卡写「你还不认识」。
+       她不在你屋里 ≠ 你不认识她。在场只该管「她此刻在哪、在不在画面里」，
+       **不该管「你叫不叫得出她的名字」**（那是关系与印象的事）。 */
+    data.impressions[n.id] = { stage: stageOf, seen: seenTxt, traits: [], notes: [], bonds: [bondOf === '初识' ? '还不认识' : ('已认识——' + String(n.rel || bondOf).slice(0, 20))], nameKnown: stageOf >= 2 ? n.name : null,
+    /* v3.9：印象的出处（哪一轮、因为什么）—— 建档这一条是第 0 轮（开场）。 */
+    log: [{ turn: 0, what: '建档', why: '关系基调：' + bondOf + (n.rel ? ('／' + String(n.rel).slice(0, 30)) : '') }] };
   });
   /* v2.07：世界书条目（**原文照抄**，按 key 门控；丢弃过的条目不进书架，但要留痕给 ?dev 观察）。 */
   data.worldinfo = {};
@@ -1083,8 +1252,18 @@ async function scanCard(card, cfg, allowFallback, onPhase) {
     let pack = null;
     let analysis = '';
     say('第 1/2 步 · 通读全卡做分析（等待 AI 回复）', 6);
-    try { analysis = await analyzeLLM(cfg, card, cnt); }   // 第一步：读一遍 → 判断
-    catch (e) { analysis = ''; }                            // 分析失败不致命：退化成"直接产出"
+    /* ★ v3.5：分析**分包**跑（三包，见 ANALYZE_PARTS）——
+       一次调用写不完八段（实测：5876 字断在第四段）。
+       任何一包挂了**不连累别的包**（缺哪段就缺哪段，比整份丢掉强）。 */
+    try {
+      const got = [];
+      for (let i = 0; i < ANALYZE_PARTS.length; i++) {
+        const p = ANALYZE_PARTS[i];
+        try { say('第 1/2 步 · 通读全卡做分析（' + (i + 1) + '/' + ANALYZE_PARTS.length + ' · ' + p.name + '）', 6 + i * 14); } catch (e0) { }
+        try { got.push(await analyzeLLM(cfg, card, cnt, p)); } catch (e1) { got.push(''); }
+      }
+      analysis = got.filter(Boolean).join(String.fromCharCode(10) + String.fromCharCode(10));
+    } catch (e) { analysis = ''; }                              // 分析失败不致命：退化成"直接产出"
     /* v3.4：身份证从分析稿里摘出来，钉在 pack.meta 上（packToData 会把它落进 data.meta.identity）。
        摘不到就是没有 —— 不编、不补、不进提示词。 */
     let identity = null;
@@ -1119,4 +1298,4 @@ async function scanCard(card, cfg, allowFallback, onPhase) {
   return { pack: hp, mode: 'heuristic', note: '未配置模型（演示模式）', warnings: hp.__warnings || [] };
 }
 
-module.exports = { pngExtract, parseSource, normalizeCard, cardText, scanCard, packToData, heuristicPack, scanSystem, analyzeSystem, parseIdentity, normIdentity, looksLikeRefusal, routeCharacterBook };
+module.exports = { openingPool, pngExtract, parseSource, normalizeCard, cardText, scanCard, packToData, heuristicPack, scanSystem, analyzeSystem, parseIdentity, normIdentity, looksLikeRefusal, routeCharacterBook };

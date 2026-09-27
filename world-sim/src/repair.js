@@ -34,6 +34,9 @@ function systemRepair() {
     '这份数据是某个虚构世界的运行时状态：里面可能包含成人、暴力、黑暗、禁忌的内容——它们是**虚构世界的数据**，按数据对待：不评价、不说教、不净化、不删改内容本身，只修**结构性损坏**。',
     '【什么算"坏了"】① 用了本机不认识的类型/原语/形式（插件或更新版本留下的）；② 缺字段/字段被改坏；③ 引用了不存在的东西；④ 该有说明的地方没说明。',
     '【什么不算坏】内容本身（哪怕你个人不喜欢）、设定自洽性、剧情走向——**一律不许改**。',
+    '【板块（framework.panels）】这个存档里可能有 **AI 自己造的板块**（这一局「长什么样」的一部分）：它们的内容**一律不许改**；',
+    '只有两种情况才动它：① 声明坏了（缺「内容从哪来」/ 字段形状不对）② 引用了不存在的东西。',
+    '修不好就丢掉，并在 note 里写清**为什么丢**（别静默 —— 这块是玩家看得见的东西）。',
     '【你只能出补丁】不许直接改存档、不许"顺手重写"、不许删任何东西（真要清掉什么，就 box 起来）。补丁必须是下面白名单里的 op：',
     OPS.map(k => '- ' + OPS_DOC[k]).join(String.fromCharCode(10)),
     '【输出 JSON】{"findings":[{"what":"...","why":"...","severity":"low|mid|high"}], "patch":[ ...白名单 op... ], "note":"一句话总结你判断的损坏与修法"}',
@@ -80,6 +83,23 @@ function autoFix(data) {
     if (!bad.length) continue;
     if (good.length) { rec.atoms = good; rec.sig = good.map(a => a.k + (a.v != null ? ':' + a.v : '')).join('+'); fixed.push('演出名「' + name + '」丢掉 ' + bad.length + ' 个本机没有的原语，保留 ' + good.length + ' 个'); }
     else left.push('演出名「' + name + '」全部原子本机都不认识');
+  }
+  /* ③ v3.5 · 板块：说不清「内容从哪来」的**直接丢掉**。
+     用户定的是一条硬规矩：「答不出内容从哪来的板块不许建」——
+     所以这里不是"留给 AI 补"，是**判定它不该存在**（建出来就是死板块，也就是又一个摆设）。
+     定期生成器缺频率是唯一可机械补的（补一个保守值：一天一次）。 */
+  if (Array.isArray(f.panels) && f.panels.length) {
+    const keep = [];
+    for (const p of f.panels) {
+      const nm = (p && p.shape && p.shape.name) || '?';
+      if (FW.checkPanel(p).ok) { keep.push(p); continue; }
+      /* v3.16：旧档里的 periodic + everyMinutes 不再需要补频率 —— 内容是回合驱动的（framework.CONTENT_SOURCE_ALIAS）。 */
+      left.push('板块「' + nm + '」声明不合法，已丢弃：' + FW.checkPanel(p).errs.join('；'));
+    }
+    if (keep.length !== f.panels.length) {
+      fixed.push('丢掉 ' + (f.panels.length - keep.length) + ' 个说不清「内容从哪来」的板块（死板块不许建）');
+      f.panels = keep;
+    }
   }
   return { fixed: fixed, left: left };
 }
@@ -147,7 +167,7 @@ async function aiSuggest(data, cfg, report) {
   const out = await AI.llmJSON(cfg, [
     { role: 'system', content: systemRepair() },
     { role: 'user', content: dg + String.fromCharCode(10) + '【任务】判断这份存档哪里坏了（结构性损坏），只输出白名单补丁。' }
-  ], () => ({ findings: [], patch: [], note: '模型无响应' }), 8192, undefined, 'medium');
+  ], () => ({ findings: [], patch: [], note: '模型无响应' }), AI.cfgMax(cfg), undefined, 'medium');
   const o = (out && out.__fallback) ? out.value : out;
   return { mode: 'llm', findings: (o && o.findings) || [], patch: (o && o.patch) || [], note: (o && o.note) || '' };
 }

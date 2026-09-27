@@ -74,5 +74,23 @@ ok(cy2 && (cy2.state || {}).location === 'p1', '说了在场 → 落点被校正
 ok(present(d2, 'p1').some(p => p.id === cy2.id), '并且真的进了 present(p1)');
 
 console.log('');
+console.log('v3.13：AI **明说**「开场就在你屋里」的人，必须留下（并且扛得住日程 tick）');
+const pack3 = mkPack();
+pack3.npcs = [
+  { id: 'npc1', name: '温若兰', role: '501 室住户', home: 'p3', workPlace: 'p3', atStart: 'p1', bond: '旧识', rel: '发小兼邻居' },   // ★ 明说在玩家屋里（开场正文写的就是她）
+  { id: 'npc2', name: '陈志远', role: '常在外跑', home: 'p3', workPlace: '', atStart: '' }           // 没明说 → 仍旧不许兜进玩家家
+];
+const d3 = IMP.packToData(pack3, { greeting: 0 });
+const wr = Object.values(d3.entities).find(e => e.name === '温若兰');
+ok(wr && (wr.state || {}).location === 'p1', '★ 明说 atStart=p1 ⇒ 落点就是玩家所在处（原来会被「送回她自己家」）—— 实测 ' + (wr && (wr.state || {}).location));
+ok(wr && (wr.state || {}).override && (wr.state.override).place === 'p1', '★ 并且写了 state.override（不然第一次 tick 就把她拽走）');
+ok(wr && (d3.impressions[wr.id] || {}).stage >= 2, '明说在场的人，印象档由**关系**给（v3.8：认不认识不看在场）—— 实测 stage=' + (wr && (d3.impressions[wr.id] || {}).stage));
+ok(present(d3, 'p1').some(p => p.id === wr.id), '★ 她真的进了 present(p1) —— 资料包的「在场人物(全部)」不再为空');
+RT.tickNPCs(d3, '2024-05-16T09:30:00');
+ok((wr.state || {}).location === 'p1', '★ 上班时间 tick 之后她**还在**玩家屋里（override 生效）—— 实测 ' + wr.state.location);
+const cy3 = Object.values(d3.entities).find(e => e.name === '陈志远');
+ok(cy3 && (cy3.state || {}).location !== 'p1', '没人明说的人，照旧不许被兜进玩家家（v1.88 那条病没有回来）：' + (cy3 && cy3.state.location));
+
+console.log('');
 console.log('==== scan-position-check: ' + pass + ' passed, ' + fail + ' failed ====');
 process.exitCode = fail ? 1 : 0;

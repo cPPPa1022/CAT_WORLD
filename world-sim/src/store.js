@@ -104,7 +104,18 @@ const ledgerMax = () => {
   const n = Number(RET.CAPS && RET.CAPS.ledger);
   return (isFinite(n) && n > 0) ? Math.floor(n) : 0;
 };
+/* ★ v3.9 · 每条产出都要能回答两件事：**这是哪一轮、因为什么**（用户 2026-09-27）。
+   账本只有一个写入口（下面那个），所以在这里统一盖章 —— type/cause 本来就是「什么事件」。
+   为什么在数据里盖而不是在界面上补：界面会重画、会过滤、会搬迁，**记录本身不带出处，事后就再也查不出来**。
+   （注意：这些标记是给引擎和 ?dev 看的，不上玩家的屏幕 —— 越权红线 4。） */
+const stampTurn = (data, rec, why) => {
+  const t = rec || {};
+  if (t.turn == null) t.turn = (data && data.current && data.current.turnN) || 0;
+  if (why && t.why == null) t.why = String(why).slice(0, 80);
+  return t;
+};
 const ledgerPush = (data, rec) => {
+  stampTurn(data, rec);
   rec.id = data.id('ledg');
   data.ledger.push(rec);
   const MX = ledgerMax();
@@ -182,7 +193,7 @@ function loadWorldFile(file) {
   }
 }
 
-module.exports = { makeStore, makeId, resBase, resAssets, stripBom, readJson, loadWorldFile, writeAtomic, getEntity, persons, places, present, ledgerPush, archivePush, worldsDir, cardsDir, cardFile, metaFile, loadMeta, saveMeta, worldFile };
+module.exports = { stampTurn, makeStore, makeId, resBase, resAssets, stripBom, readJson, loadWorldFile, writeAtomic, getEntity, persons, places, present, ledgerPush, archivePush, worldsDir, cardsDir, cardFile, metaFile, loadMeta, saveMeta, worldFile };
 
 // ../src/data 目录由调用方创建
 module.exports.DATA_DIR = path.join(__dirname, '..', 'data');

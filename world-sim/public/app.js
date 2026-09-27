@@ -1,4 +1,4 @@
-﻿// app.js — 世界模拟器前端 v1.8 FINAL（全局委托 · 舞台模式 · 世界声明式工具）
+// app.js — 世界模拟器前端 v1.8 FINAL（全局委托 · 舞台模式 · 世界声明式工具）
 'use strict';
 
 let V = null;
@@ -28,7 +28,7 @@ let __galleryReady = false;   // 图库（第二个数据源）是否已针对�
 let __lastFxSeq = 0;          // 本回合演出（fx.js 词表）已播到的序号
 let __lastDocSeq = 0;         // 文书展开（文档对象）已展开到的序号
 let __expDay = '';            // v1.54「你经历过」按哪一天筛选
-const BUILD = 'v3.4';
+const BUILD = 'v3.20';
 /* v1.86：**开发者字段走 /api/dev**（世界视图 /api/state 默认不含它们）。
    为什么：原来 buildView 一份 JSON 兼作世界呈现 + 设置面板 + 诊断，任何新增字段默认就对前端可见 ——
    "开发者信息不上桌"（catworld-ui 越权红线 4）只能靠纪律守。现在默认隐藏，只在 ?dev 或设置面板里取。 */
@@ -288,6 +288,8 @@ if (!window.__delegated) {
     if (!t) return;
     const act = t.getAttribute('data-act');
     if (act && act.indexOf('tool:') === 0) { openPanel(act.slice(5)); return; }
+    /* v3.12：AI 造的板块（「更多」里那一格）—— kind 就是 'ai:<id>'。 */
+    if (act && act.indexOf('ai:') === 0) { openPanel(act); return; }
     if (act && ACTIONS[act]) { e.preventDefault(); ACTIONS[act](t); }
   });
 }
@@ -654,6 +656,8 @@ function phoneAppDocs(p) {
 }
 
 function refresh(view) {
+  /* v3.12：AI 造出来的板块入口（「更多」里）跟着视图走 —— 造了新的就自动出现。 */
+  try { setTimeout(mountAIPanels, 0); } catch (e0) { }
   if (!view) return;
   if (view.noWorld) { renderStart(); return; }
   const wxNew = (view.weather && view.weather.text) || (view.weather || '');
@@ -1501,6 +1505,8 @@ function renderPanel() {
   else if (panelKind === 'goods') panelGoods(P);
   else if (panelKind === 'wi') panelWorldInfo(P);
   else if (panelKind === 'overview') panelOverview(P);
+  /* ★ v3.12 · AI 造出来的板块（世界模板创造）—— 内容与栏位都由它自己声明。 */
+  else if (String(panelKind).indexOf('ai:') === 0) panelCreator(P, String(panelKind).slice(3));
   else if (panelKind === 'archive') panelArchive(P);
   else if (panelKind === 'saves') panelSaves(P);
   else if (panelKind === 'gallery') panelGallery(P);
@@ -1516,6 +1522,11 @@ const PANEL_ICON = {
 function panelLabel(k) {
   const t = (V && (V.tools || []).find(x => x.id === k));
   if (t) return t.name;
+  /* v3.12：AI 造的板块 —— 标题就是它自己起的名字。 */
+  if (String(k).indexOf('ai:') === 0) {
+    const pm = ((V && V.panels) || []).filter(x => x && ('ai:' + x.id) === k)[0];
+    return (pm && pm.name) || '这个世界的一格';
+  }
   return { phone: '手机', map: '舆图', me: '我', log: '身世日志', people: '人物', news: '新闻', goods: '物品', docs: '文书', wi: '世界书', overview: '世界概况', archive: '剧本', saves: '存档', gallery: '画面' }[k] || k;
 }
 // 世界声明式设备面板：app 来自工具注册表（大哥大只有消息/通讯录，信匣=信件…）
@@ -1977,6 +1988,89 @@ function portraitBtn(pe, g0) {
     finally { __portraitBusy[pe.id] = false; }
   };
   return b;
+}
+/* ★ v3.12 · AI 造的板块：标题 + 「这一格是什么」 + 一张表（栏位由 shape.list 说、行由内容来源给）。
+   空的时候**照实说**（并说明它什么时候会有内容）—— 不留白，也不假装有。 */
+/* ★ v3.19 · 模块的统一渲染器：**排法由 AI 定**（list/table/cards/timeline），**能回的直接给输入框**。 */
+function paintPanelRows(host, pm) {
+  const rows = pm.rows || [];
+  const L = pm.layout || 'list';
+  if (!rows.length) { host.appendChild(el('div', 'hint', '（这一格还空着 —— 内容会随这个世界长出来）')); return; }
+  if (L === 'cards') {
+    rows.forEach(r => { const c = el('div', 'aiocard'); (r || []).forEach((v, i) => c.appendChild(el('div', i === 0 ? 'aiocard-t' : 'aiocard-d', String(v == null ? '' : v)))); host.appendChild(c); });
+  } else if (L === 'timeline') {
+    rows.forEach(r => { const t = el('div', 'aiotl'); t.appendChild(el('span', 'aiotl-d', String((r || [])[0] || ''))); t.appendChild(el('span', 'aiotl-x', (r || []).slice(1).join('　'))); host.appendChild(t); });
+  } else {
+    const tbl = el('div', 'aipt');
+    if ((pm.list || []).length) { const hr = el('div', 'aipt-r aipt-h'); pm.list.forEach(c => hr.appendChild(el('span', 'aipt-c', String(c)))); tbl.appendChild(hr); }
+    rows.forEach(r => { const row = el('div', 'aipt-r'); const n = Math.max(1, (pm.list || []).length, (r || []).length); for (let i = 0; i < n; i++) row.appendChild(el('span', 'aipt-c', String((r || [])[i] == null ? '' : r[i]))); tbl.appendChild(row); });
+    host.appendChild(tbl);
+  }
+  if (pm.kind === 'messages') {
+    const last = rows[rows.length - 1] || [];
+    const who = String(last[0] || '').trim();
+    const row = el('div', 'aiomsg');
+    const inp = el('input'); inp.placeholder = who ? ('回 ' + who + '…') : '说点什么…';
+    const go = el('button', 'mini', '发出');
+    const send = () => { const v = String(inp.value || '').trim(); if (!v) return; inp.value = ''; try { submit(who ? ('给' + who + '发消息：' + v) : v); } catch (e) { toast('发不出去：' + String((e && e.message) || e), true); } };
+    go.onclick = send;
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+    row.appendChild(inp); row.appendChild(go);
+    host.appendChild(row);
+  }
+}
+function panelCreator(p, id) {
+  const list = ((V && V.panels) || []);
+  const me = list.filter(x => x && x.id === id)[0];
+  if (!me) { p.appendChild(el('div', 'hint', '（这个板块不在了——可能被新的一局覆盖了）')); return; }
+  p.appendChild(el('div', 'hint', (me.why || '（这个世界自己的东西）')));
+  paintPanelRows(p, me);
+  p.appendChild(el('div', 'sysnote', '这一格是这个世界自己长出来的（来源：' + (me.source || '?') + '；' + (me.when || '') + '）'));
+}
+/* 「更多」里的入口：每次刷新按 V.panels 重建（造了新板块就自动出现） */
+/* ★ v3.19：**浮层**（mount=overlay）挂在屏幕上、最多 3 个；其余进「更多」按分类收纳。
+   用户：「为什么要全部塞进更多里面呢？做成一个悬浮窗…例如那个系统做成一个科技风的悬浮窗不行吗？」 */
+function mountAIOverlays() {
+  let host = document.getElementById('aioverlays');
+  if (!host) { host = el('div'); host.id = 'aioverlays'; document.body.appendChild(host); }
+  const want = ((V && V.panels) || []).filter(p => p && p.mount === 'overlay').slice(0, 3);
+  const sig = want.map(p => p.id + ':' + ((p.rows || []).length)).join('|');
+  if (host.dataset.sig === sig) return;
+  host.dataset.sig = sig;
+  host.innerHTML = '';
+  want.forEach((pm, i) => {
+    const w = el('div', 'aioverlay');
+    w.style.top = (86 + i * 26) + 'px';
+    const h = el('div', 'aioverlay-h');
+    h.appendChild(el('span', null, (pm.name || pm.id) + (pm.style ? '　' + pm.style : '')));
+    const x = el('button', 'aioverlay-x', '×');
+    x.onclick = () => { host.dataset.sig = 'closed'; w.remove(); };
+    h.appendChild(x); w.appendChild(h);
+    const b = el('div', 'aioverlay-b');
+    paintPanelRows(b, pm);
+    w.appendChild(b); host.appendChild(w);
+  });
+}
+function mountAIPanels() {
+  try { mountAIOverlays(); } catch (e0) { }
+  const g = document.querySelector('#mtiles .tiles-grid');
+  if (!g) return;
+  for (const old of [...g.querySelectorAll('.tile.ai')]) old.remove();
+  /* v3.17：**按分类收纳**（上百格也不乱）—— 同一分类的先出现一个小标题。 */
+  const groups = {}; const order = [];
+  for (const pm of ((V && V.panels) || [])) { if (!pm || !pm.id) continue; const k = pm.group || '这一局'; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(pm); }
+  for (const gk of order) {
+    if (order.length > 1) g.appendChild(el('div', 'tiles-h', gk));
+    for (const pm of groups[gk]) {
+    const b = el('div', 'tile ai');
+    b.dataset.act = 'ai:' + pm.id;
+    b.title = pm.name || pm.id;
+    const ic = el('span', 't-i'); ic.innerHTML = iconSVG(pm.icon || 'box'); b.appendChild(ic);
+    b.appendChild(el('span', 't-n', pm.name || pm.id));
+    elab(b);
+    g.appendChild(b);
+    }
+  }
 }
 function panelPeople(p) {
   loadGallery();
@@ -2446,29 +2540,11 @@ function showWorldCard(pv, setup) {
     }
     const m = $('#modal');
     m.classList.remove('hidden');
-    const box = el('div', 'box');
+    const box = el('div', 'box opbox');   // v3.6：开场选择要用大界面（见 §7.5）
     box.appendChild(el('h2', null, 'AI 生成的新世界'));
     box.appendChild(el('div', 'item', '世界：' + (pv.name || '未名之地') + '（' + (pv.era || '时代未知') + ' · ' + (pv.weather || '') + '）'));
-    let selOpening = 0;
-    const ol = pv.openingList || [pv.firstScene || ''];
-    if (ol.length > 1) {
-      box.appendChild(el('div', 'item', '多条开场 —— 点选一条进入：'));
-      const opBox = el('div');
-      const rows = [];
-      const paint = () => rows.forEach((rw, j) => {
-        rw.textContent = (j === selOpening ? '▸ ' : '  ') + String(ol[j] || '').slice(0, 90);
-        rw.style.background = j === selOpening ? 'rgba(255,255,255,0.07)' : 'transparent';
-      });
-      ol.forEach((op, i) => {
-        const row = el('div', null, '');
-        row.style.cssText = 'cursor:pointer;padding:2px 4px;border-radius:4px;margin:2px 0;white-space:pre-wrap;';
-        row.onclick = () => { selOpening = i; paint(); };
-        rows.push(row); opBox.appendChild(row);
-      });
-      paint(); box.appendChild(opBox);
-    } else {
-      box.appendChild(el('div', 'hint', '开场：' + String(ol[0] || '')));
-    }
+    /* v3.6：开场选择挪到下面（资料在上、窗口在中、按钮在下）—— 见 §7.5。 */
+    const ol = (pv.openingList && pv.openingList.length) ? pv.openingList : [pv.firstScene || ''];
     box.appendChild(el('div', 'item', '人物：' + ((pv.npcs || []).join('、') || '（待你发现）')));
     box.appendChild(el('div', 'hint', '地点：' + ((pv.places || []).join('、') || '')));
     box.appendChild(el('div', 'sysnote', pv.mode === 'llm' ? '由你的 AI 模型生成（消耗 token）' : '演示组合（未接入模型）'));
@@ -2482,6 +2558,11 @@ function showWorldCard(pv, setup) {
       }
       box.appendChild(el('div', 'hint', '（"进入"后：相容设定进入你的档案；冲突项以世界规则为准，不迁就你。）'));
     }
+    /* ★ v3.6 · 一条开场一个窗口，窗口里自己滚（滚轮读完整段再选） */
+    box.appendChild(el('div', 'op-lead', openingLead(ol.length, '这个世界')));
+    const opGrid = el('div', 'opgrid');
+    box.appendChild(opGrid);
+    const panes = openingPanes(opGrid, ol);
     const enter = el('button', null, '进入这个新世界');
     // v1.68：防连点。原来没锁 → 点几下就建几个世界（实测 19 秒建了 8 个）。
     let entering = false;
@@ -2491,7 +2572,7 @@ function showWorldCard(pv, setup) {
       m.classList.add('hidden');
       enterTransition('◉ 世界正在落成…', '「' + (pv.name || '新世界') + '」场景·人物·开局 组装中——马上进入');
       progStart('⏳ 正在落成世界…', '组装场景·人物·开局');
-      try { const a = await api('/api/world/gen', { apply: true, greeting: selOpening }); progStop(); refresh(a.view); }
+      try { const a = await api('/api/world/gen', { apply: true, greeting: panes.sel() }); progStop(); refresh(a.view); }
       catch (e) { progStop(); toast('进入失败：' + e.message, true); }
       hideTransition();
     };
@@ -2774,7 +2855,7 @@ async function openCardbox() {
           if (cur.saved) bits.push('上次打开 ' + fmtStamp(cur.saved));
           row.appendChild(el('div', 'sc-b', '聊天：' + (cur.name || '未命名') + '　' + bits.join(' · ')));
         } else {
-          row.appendChild(el('div', 'sc-b', '聊天：（还没开过——点「进入」开始这一局）'));
+          row.appendChild(el('div', 'sc-b', c.entered === false ? '扫描已完成，还没开局（差第三步：开局编译）——点「开始这一局」' : '聊天：（还没开过——点「进入」开始这一局）'));
         }
         const goB = el('button', 'mini', cur ? '▶ 进入聊天' : '▶ 开始这一局');
         goB.onclick = async () => {
@@ -2835,38 +2916,48 @@ async function openCardbox() {
       listWrap.appendChild(el('div', 'sysnote', '结构：角色卡 →（点卡）→ 聊天（= 这一局世界）→（聊天里）→ 存档（5 自动 + 15 手动）。点卡就直接进聊天，不在这里列存档；要另起一条时间线才用「＋ 另开一个聊天」。'));
     } catch (e) { listWrap.appendChild(el('div', 'hint', '加载失败：' + e.message)); }
   }
+  /* ★ v3.6 · 卡盒开局的开场选择：与大界面同一套（§7.5）。
+     注意这里必须**现取全文** —— 卡盒的 c.openingList 是建档时截过的摘要
+     （server.js:1248 的 slice(0,200)/slice(0,400)），拿它做"读完再选"是假的。 */
   function pickOpening(c) {
-    listWrap.innerHTML = '';
-    const ol = c.openingList || [];
-    if (!ol.length) { listWrap.appendChild(el('div', 'hint', '（这张卡没有开场信息）')); return; }
-    let sel = 0;
-    const rows = [];
-    const paint = () => rows.forEach((rw, j) => {
-      rw.textContent = (j === sel ? '▸ ' : '  ') + String(ol[j] || '').slice(0, 90);
-      rw.style.background = j === sel ? 'rgba(255,255,255,0.07)' : 'transparent';
-    });
-    ol.forEach((op, i) => {
-      const row = el('div', 'pick-row', '');
-      row.onclick = () => { sel = i; paint(); };
-      rows.push(row); listWrap.appendChild(row);
-    });
-    paint();
-    listWrap.appendChild(el('div', 'item', '选一条开场，进入「' + c.worldName + '」'));
-    const go = el('button', null, '▶ 进入');
-    go.onclick = async () => {
-      go.textContent = '…';
-      try {
-        const r2 = await api('/api/cards/launch', { id: c.id, greeting: sel });
-        m.classList.add('hidden');
-        enterTransition('◉ 世界正在落成…', '「' + c.worldName + '」场景·人物·开局 组装中——马上进入');
-        refresh(r2.view);
-        toast('已从卡「' + c.name + '」开局（全新的一局）', false);
-        hideTransition();
-      } catch (e) { toast('开局失败：' + e.message, true); go.textContent = '▶ 进入'; }
-    };
-    const back = el('button', 'mini', '← 返回卡盒');
-    back.onclick = draw;
-    listWrap.appendChild(go); listWrap.appendChild(back);
+    m.innerHTML = '';
+    const pb = el('div', 'box opbox');
+    pb.appendChild(el('h2', null, '选一条开场 · ' + (c.worldName || c.name || '')));
+    const lead = el('div', 'op-lead', '正在读这张卡的开场全文…');
+    pb.appendChild(lead);
+    const grid = el('div', 'opgrid');
+    pb.appendChild(grid);
+    m.appendChild(pb);
+    m.classList.remove('hidden');   // ★ 原来这条路只是往已打开的弹窗里填内容；换成"整块换"之后，必须自己把弹窗打开（浏览器实测抓到的）
+    const foot = el('div', 'opfoot');
+    pb.appendChild(foot);
+    api('/api/cards/openings?id=' + encodeURIComponent(c.id)).then(function (r) {
+      const list = (r && r.ok && (r.list || []).length) ? r.list : ((c.openingList || []).length ? c.openingList : ['']);
+      lead.textContent = (r && !r.ok)
+        ? ('读不到卡档里的全文（' + (r.err || '未知原因') + '）—— 下面是建档时留下的摘要。')
+        : openingLead(list.length, '这张卡');
+      const panes = openingPanes(grid, list);
+      const go = el('button', null, '进入「' + (c.worldName || c.name || '') + '」');
+      go.onclick = async () => {
+        if (go.disabled) return;
+        go.disabled = true; go.textContent = '正在落成…';
+        try {
+          const r2 = await api('/api/cards/launch', { id: c.id, greeting: panes.sel() });
+          m.classList.add('hidden');
+          enterTransition('◉ 世界正在落成…', '「' + c.worldName + '」场景·人物·开局 组装中——马上进入');
+          refresh(r2.view);
+          toast('已从卡「' + c.name + '」开局（全新的一局）', false);
+          hideTransition();
+        } catch (e) {
+          go.disabled = false; go.textContent = '进入「' + (c.worldName || c.name || '') + '」';
+          toast('开局失败：' + e.message, true);
+        }
+      };
+      const back = el('button', 'mini', '← 返回卡盒');
+      back.onclick = () => openCardbox();
+      foot.appendChild(go); foot.appendChild(back);
+      foot.appendChild(el('span', 'op-tip', '每次开局都是全新的一局，不会碰你别的世界。'));
+    }).catch(function (e) { lead.textContent = '读开场全文失败：' + String((e && e.message) || e); });
   }
   draw();
 }
@@ -2915,12 +3006,120 @@ function openSelfSetup() {
   m.innerHTML = ''; m.appendChild(box);
 }
 
+/* ══ v3.6 · 开场选择：一条开场 = 一个能滚轮读完的小窗口 ══════════════════════
+   为什么重做（用户 2026-09-27 报案）：
+     「这个开场（第二步走完）选择我不满意 看不完剧情我怎么选」
+   改前：三处（扫描预览 / 角色卡盒 pickOpening / AI 生成世界预览）各贴了一份**一模一样的
+   90 字列表**（.slice(0,90)）；而进世界后真正进 sceneLog 的是 slice(0,1200)（import.js:1050）
+   —— 等于"没读过就决定了一整局的开场剧目"（交接文档 §7.5）。
+   现在三处共用这一份实现：一个大界面，每条开场一个窗口，窗口内自己滚。
+
+   为什么返回的不是 Promise：Esc 是全局快捷键，会直接把 #modal 隐藏（app.js:3294），
+   等不到的 await 会把整条流程无声挂死。这里用"谁调谁继续"，不制造悬空的 await。 */
+function openingName(i, n) {
+  return (n > 1 && i === n - 1) ? '主开场' : ('备选开局 ' + (i + 1));
+}
+/* 开场条数不同，说法不同（用户 2026-09-27 问「如果有 20 个开局呢？是动态适配的你知道吧」）——
+   一句提示写死在一处，三处入口就不会各说各的。 */
+function openingLead(n, what) {
+  const w = what || '这条卡';
+  if (n > 4) return w + '有 ' + n + ' 条开场 —— 左边是它们的小窗（可上下滚），点一条，右边那个大窗口里读全文；滚轮读右边。';
+  if (n > 1) return w + '有 ' + n + ' 条开场 —— 每条一个窗口：在窗口里滚滚轮就能读完整段，点一下选中它。';
+  return w + '只有一条开场（下面窗口里就是全文，可滚动）。';
+}
+function openingCard(txt, i, n) {
+  const s = String(txt == null ? '' : txt);
+  const card = el('div', 'op-card');
+  const head = el('div', 'op-head');
+  head.appendChild(el('span', 'op-no', ''));
+  head.appendChild(el('span', 'op-len', s.trim() ? (s.trim().length.toLocaleString() + ' 字') : ''));
+  card.appendChild(head);
+  card.appendChild(el('div', 'op-brief', s.trim() ? s.replace(/\s+/g, ' ').slice(0, 68) : '（这一条是空的）'));
+  card.appendChild(el('div', 'op-body', s.trim() ? s : '（这一条是空的）'));
+  return card;
+}
+/* ★ v3.7 · 动态适配（不再假设"开场只有几条"）：
+     ≤4 条 → 一排小窗口并排（今天的样子，能一眼对读）；
+     >4 条 → 左列 N 个小窗（自己滚）+ 右栏一个大窗口读全文。
+       为什么不能都并排：20 条 × 340px = 6800px，横向拖到底也读不完。
+       这个形状与本项目的 AI 流量台（左表右文）是同一个。 */
+function openingPanes(host, list) {
+  let sel = 0;
+  const n = list.length;
+  const MANY = n > 4;
+  const setHead = (card, i, on) => { card.querySelector('.op-no').textContent = (on ? '▸ ' : '') + openingName(i, n); };
+  host.classList.toggle('many', MANY);
+  if (!MANY) {
+    const cards = [];
+    const paint = () => cards.forEach((c, j) => { c.classList.toggle('on', j === sel); setHead(c, j, j === sel); });
+    list.forEach((txt, i) => {
+      const card = openingCard(txt, i, n);
+      card.onclick = () => { sel = i; paint(); };
+      cards.push(card); host.appendChild(card);
+    });
+    paint();
+    return { sel: () => sel, setSel: (i) => { sel = i; paint(); }, count: () => n };
+  }
+  const rail = el('div', 'op-rail'); const read = el('div', 'op-read');
+  host.appendChild(rail); host.appendChild(read);
+  const smalls = [];
+  list.forEach((txt, i) => {
+    const c = openingCard(txt, i, n);
+    c.classList.add('mini');
+    c.onclick = () => { sel = i; paint(); };
+    smalls.push(c); rail.appendChild(c);
+  });
+  const reader = openingCard('', 0, n);
+  reader.classList.add('on');
+  read.appendChild(reader);
+  const rBody = reader.querySelector('.op-body');
+  const paint = () => {
+    smalls.forEach((c, j) => { c.classList.toggle('on', j === sel); setHead(c, j, j === sel); });
+    setHead(reader, sel, true);
+    const s = String(list[sel] == null ? '' : list[sel]);
+    reader.querySelector('.op-len').textContent = s.trim() ? (s.trim().length.toLocaleString() + ' 字') : '';
+    rBody.textContent = s.trim() ? s : '（这一条是空的）';
+    rBody.scrollTop = 0;
+  };
+  paint();
+  return { sel: () => sel, setSel: (i) => { sel = i; paint(); }, count: () => n };
+}
+
 // ---------- 导入 ----------
+/* ★ v3.6（交接文档 §7.6）：**上一次扫描的预览不再随弹窗消失**。
+   原来「返回 / 重新扫描」只是 m.classList.add('hidden') + openImport()
+   —— 扫描结果确实还活在服务端内存里（SCAN_CACHE），但界面把回去的路掐了，
+   玩家只能重扫（实测这一局：4 分 6 秒 / 5.5 万 output token）。
+   这里整块留着那个预览 DOM（连带它的闭包与滚动位置），导入框里给一条"回到刚才那次扫描"。 */
+let LAST_SCAN = null;
 function openImport() {
   const m = $('#modal');
   m.classList.remove('hidden');
   const box = el('div', 'box');
   box.appendChild(el('h2', null, '导入角色卡'));
+  /* ★ v3.6（交接文档 §7.6）：上一次扫描的预览还在，就给一条回去的路。
+     为什么之前没有：预览结果只活在服务端内存（SCAN_CACHE）里，
+     而"返回"把界面那一份也丢了 —— 玩家以为白扫了，只能重扫一遍。
+     先问一句服务端它还在不在（/api/scan/alive）：不在就说实话，不假装能回去。 */
+  if (LAST_SCAN && LAST_SCAN.box && LAST_SCAN.scanId) {
+    const ago = Math.max(1, Math.round((Date.now() - (LAST_SCAN.at || Date.now())) / 60000));
+    const backB = el('button', null, '回到刚才那次扫描（' + String(LAST_SCAN.name || '上次那张卡').slice(0, 16) + ' · ' + ago + ' 分钟前）');
+    backB.onclick = async () => {
+      backB.disabled = true;
+      let alive = false;
+      try { const a = await api('/api/scan/alive?id=' + encodeURIComponent(LAST_SCAN.scanId)); alive = !!(a && a.alive); } catch (e) { alive = false; }
+      if (!alive) {
+        LAST_SCAN = null; backB.remove();
+        toast('那次扫描的结果已经不在了（模拟器重启过，或者中途又扫了 6 张卡）—— 只能重新扫描', true);
+        return;
+      }
+      m.innerHTML = '';
+      m.appendChild(LAST_SCAN.box);      // 连滚动位置一起回来
+      m.classList.remove('hidden');
+    };
+    box.appendChild(backB);
+    box.appendChild(el('div', 'hint', '↑ 那次扫描还留在服务端内存里（不用重新花钱、也不用重等）；点它直接回到那条预览。'));
+  }
   const roleSel = el('select');
   for (const o of [['npc', '角色卡 = 世界里的 NPC（普通情况）'], ['player', '角色卡 = 你扮演的角色']]) { const op = el('option', null, o[1]); op.value = o[0]; roleSel.appendChild(op); }
   box.appendChild(el('div', 'row', '这张卡是:')); box.appendChild(roleSel);
@@ -2972,7 +3171,7 @@ function openImport() {
       // 多开局：由 user 点选，而不是随机/confirm
       runBtn.textContent = '扫描并进入世界';
       m.innerHTML = '';
-      const b2 = el('div', 'box');
+      const b2 = el('div', 'box opbox');
       b2.appendChild(el('h2', null, '已识别：' + (pv.preview.name || '未命名角色卡')));
       b2.appendChild(el('div', 'hint', '时代：' + (pv.preview.era || '未知') + (pv.preview.mode === 'llm' ? ' · AI 通读全卡后重建的世界' : ' · 本地整理')));
       /* v1.70：把"补了多少、裁了多少"露出来 —— 这次改动的价值就在这里（原来只照抄，现在会补全+裁决）。 */
@@ -2982,28 +3181,18 @@ function openImport() {
         const fl = pv.preview.filledList || [];
         if (fl.length) b2.appendChild(el('div', 'hint', '补的举例：' + fl.slice(0, 4).join('；')));
       }
-      let selOpening = 0;
-      const ol = pv.preview.openingList || [pv.preview.firstScene || ''];
-      if (ol.length > 1) {
-        b2.appendChild(el('div', 'item', '多条开场 —— 点选一条作为你的第一帧：'));
-        const opBox = el('div');
-        const rows = [];
-        const paint = () => rows.forEach((rw, j) => {
-          rw.textContent = (j === selOpening ? '▸ ' : '  ') + String(ol[j] || '').slice(0, 90);
-          rw.style.background = j === selOpening ? 'rgba(255,255,255,0.07)' : 'transparent';
-        });
-        ol.forEach((op, i) => {
-          const row = el('div', null, '');
-          row.style.cssText = 'cursor:pointer;padding:2px 4px;border-radius:4px;margin:2px 0;white-space:pre-wrap;';
-          row.onclick = () => { selOpening = i; paint(); };
-          rows.push(row); opBox.appendChild(row);
-        });
-        paint(); b2.appendChild(opBox);
-      } else {
-        b2.appendChild(el('div', 'hint', '开场：' + String(ol[0] || '（无）')));
-      }
+      /* ★ v3.6 · 开场选择（用户 2026-09-27：「看不完剧情我怎么选」）：
+         每条开场一个窗口，窗口里自己滚 —— 读完整段再决定。原来这里每条只显示 90 字。 */
+      const ol = (pv.preview.openingList && pv.preview.openingList.length) ? pv.preview.openingList : [pv.preview.firstScene || ''];
+      b2.appendChild(el('div', 'op-lead', openingLead(ol.length, '这条卡')));
+      const opGrid = el('div', 'opgrid');
+      b2.appendChild(opGrid);
+      const panes = openingPanes(opGrid, ol);
       const go2 = el('button', null, '进入这个新世界');
-      const back2 = el('button', null, '返回 / 重新扫描');
+      /* v3.6：文案改了 —— 它原来写着「返回 / 重新扫描」，读起来像"返回上一步"，
+         实际是"放弃这次扫描"（交接文档 §7.6b）。现在它真的**只是返回**：
+         这次预览留在 LAST_SCAN 里，导入框里能一键回到这里。 */
+      const back2 = el('button', null, '返回（这次扫描留着）');
       let going2 = false;   // v1.68 防连点（卡开局同样会一点一个世界）
       go2.onclick = async () => {
         if (going2) return;
@@ -3012,7 +3201,7 @@ function openImport() {
         enterTransition('◉ 世界正在落成…', '「' + (pv.preview.name || '这张卡') + '」场景·人物·开局 组装中——马上进入');
         progStart('⏳ 正在落成世界…', '把卡建成可运行的世界');
         try {
-          let r = await api('/api/new', { src, payload, role: roleSel.value, era: eraIn.value || undefined, greeting: selOpening, noSelf: !selfCb.checked, fallback: useFallback, scanId: scanId });
+          let r = await api('/api/new', { src, payload, role: roleSel.value, era: eraIn.value || undefined, greeting: panes.sel(), noSelf: !selfCb.checked, fallback: useFallback, scanId: scanId });
           /* v1.67：建世界这条路上也会 needChoice（缓存没命中、重扫又失败）——必须处理，
              否则 r.view 是 undefined → 世界静默不建，界面"进去就没了"（真事故）。 */
           while (r && r.needChoice) {
@@ -3021,16 +3210,28 @@ function openImport() {
             if (c2 === 'cancel') { runBtn.textContent = '扫描并进入世界'; return; }
             if (c2 === 'fallback') useFallback = true;
             enterTransition('◉ 世界正在落成…', '重新整理中——马上进入');
-            r = await api('/api/new', { src, payload, role: roleSel.value, era: eraIn.value || undefined, greeting: selOpening, noSelf: !selfCb.checked, fallback: useFallback });
+            r = await api('/api/new', { src, payload, role: roleSel.value, era: eraIn.value || undefined, greeting: panes.sel(), noSelf: !selfCb.checked, fallback: useFallback });
           }
           if (!r || !r.view) throw new Error((r && r.scanErr) || '没有拿到世界（服务端没返回 view）');
           progStop();
           try { refresh(r.view); } catch (e2) { toast('渲染出错：' + String(e2.message || e2), true); }
           toast('已导入「' + (r.card || '') + '」' + (r.archived ? '（已建档，下次可直接开局）' : ''), r.mode === 'heuristic');
-        } catch (e) { progStop(); toast('导入失败: ' + e.message, true); }
+          LAST_SCAN = null;   // v3.6：进去了就不需要"回到刚才那次扫描"了
+        } catch (e) {
+          progStop();
+          /* v3.6：失败要能重来 —— 原来 going2 一旦为真就永久锁死按钮，
+             而弹窗已经被隐藏，玩家只能重新扫描（又一次 4 分钟）。 */
+          going2 = false; go2.disabled = false; go2.textContent = '进入这个新世界';
+          toast('导入失败: ' + e.message, true);
+        }
         hideTransition();
       };
-      back2.onclick = () => { m.classList.add('hidden'); openImport(); };
+      back2.onclick = () => {
+        /* v3.6（§7.6）：**不扔掉这次扫描**。整块预览留着（连线上的闭包与滚动位置），
+           导入框里会出现一条「回到刚才那次扫描」；服务端那份缓存也还在（用掉才删）。 */
+        LAST_SCAN = { box: b2, scanId: scanId, name: (pv.preview && pv.preview.name) || '上次那张卡', at: Date.now(), preview: pv.preview };
+        m.classList.add('hidden'); openImport();
+      };
       b2.appendChild(go2); b2.appendChild(back2);
       m.appendChild(b2);
     } catch (e) { progStop(); toast('导入失败: ' + e.message, true); runBtn.textContent = '扫描并进入世界'; }
@@ -3103,7 +3304,8 @@ function contentTierBlock(box) {
       const row = el('div', 'row', s.name + ':');
       const sel = el('select');
       const op0 = el('option', null, '关（不加任何档）'); op0.value = ''; sel.appendChild(op0);
-      for (const t of (s.tiers || [])) { const op = el('option', null, t.id + '（' + t.chars + ' 字）'); op.value = t.id; sel.appendChild(op); }
+      // v3.5：档位带槽位前缀（文风-梦白话），下拉里只显示去前缀的名字；**值仍是全名**
+      for (const t of (s.tiers || [])) { const op = el('option', null, (t.label || t.id) + '（' + t.chars + ' 字）'); op.value = t.id; sel.appendChild(op); }
       sel.value = s.cur || '';
       sel.onchange = async () => {
         try { const rr = await api('/api/content/set', { slot: s.id, id: sel.value }); paint(rr.view); toast('内容模块 → ' + (sel.value || '关'), false); }

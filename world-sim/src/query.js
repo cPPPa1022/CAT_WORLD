@@ -11,7 +11,7 @@ const K = require('./knowledge');
 const REC = require('./records');
 const RT = require('./runtime');   // v2.04 P1-2：记忆深度（weight）的唯一计算点 —— 按需调取也按它排序
 
-const WHATS = ['catalog', 'doc', 'docs', 'person', 'people', 'place', 'places', 'memory', 'ledger', 'scene', 'news', 'framework', 'unknown', 'records', 'fx'];
+const WHATS = ['catalog', 'doc', 'docs', 'person', 'people', 'place', 'places', 'memory', 'ledger', 'scene', 'archive', 'news', 'framework', 'unknown', 'records', 'fx'];
 const WHAT_DOC = {
   doc: '一份文书的正文（给 id 或 q 关键词）',
   docs: '你手上的文书清单',
@@ -42,6 +42,8 @@ function catalog(data) {
     ['记忆', Object.keys(data.memories || {}).length + ' 条'],
     ['事件流', (data.ledger || []).length + ' 条（客观层）'],
     ['你亲历', (data.experience || []).length + ' 条原文 + ' + Object.keys(data.dayDigest || {}).length + ' 天摘要'],
+    /* v3.10：场景原文**按轮次可查**（打标记就是为了这一步：引用某件事时去调它）。 */
+    ['场景原文', '第 0~' + ((data.current && data.current.turnN) || 0) + ' 轮都能取回（what:scene + turn:N 取那一轮；+ q:关键词 搜原话）'],
     ['消息', (data.messages || []).length + ' 条'],
     ['新闻', (data.news || []).length + ' 条'],
     ['框架', (data.framework ? ((data.framework.vocab && (data.framework.vocab.docKinds || []).length) || 0) + ' 个词 · ' + ((data.framework.types || []).length) + ' 个型 · ' + ((data.framework.rules || []).length) + ' 条律' : '未建立')],
@@ -144,9 +146,64 @@ function one(data, q) {
     notes.push('这是**客观层**（可能含你没在场的事）——只许用来对齐世界事实，**不许直接写进玩家画面**');
     return { items: items, notes: notes, misses: misses };
   }
+  /* ★ v3.10 · 按**轮次**取回那一轮的场景原文（用户 2026-09-27 说清了打标记的用途：
+     「如果需要引用某件事情的时候（别忘了遗忘机制哈）可以直接去调取工具去看对应的场景原文
+      （会有信息失真 当然这个是 ai 去判断的了）然后人物不就可以说对应的话了吗」）。
+     · turn:N → 只要第 N 轮；from/to → 区间；q → 在原文里搜关键词；都不给 → 退回「最近 n 条」
+     · 每条带 turn / 说话者 / 世界时间
+     · 回执末尾附上**那一轮落下的记忆**（谁记得、现在多深、想起过几次）—— 遗忘机制就在这一栏：
+       **查得到原文 ≠ 角色还记得**；能不能说出口，看 TA 的记忆深度。 */
   if (w === 'scene') {
-    const rows = (data.sceneLog || []).slice(-(Number(q.n) || 20));
-    for (const l of rows) push({ ref: '', title: l.speaker || l.type || '', t: l.t || '', by: 'world', ...text(l.text, 300) });
+    const log = data.sceneLog || [];
+    const wantTurn = (q.turn != null && isFinite(Number(q.turn))) ? Number(q.turn) : null;
+    const from = (q.from != null && isFinite(Number(q.from))) ? Number(q.from) : null;
+    const to = (q.to != null && isFinite(Number(q.to))) ? Number(q.to) : null;
+    const kw = String(q.q || '').trim();
+    let rows = log;
+    let how = '最近 ' + (Number(q.n) || 20) + ' 条';
+    if (wantTurn != null) { rows = log.filter(l => Number(l.turn) === wantTurn); how = '第 ' + wantTurn + ' 轮'; }
+    else if (from != null || to != null) { rows = log.filter(l => Number(l.turn) >= (from == null ? -Infinity : from) && Number(l.turn) <= (to == null ? Infinity : to)); how = '第 ' + (from == null ? '?' : from) + '~' + (to == null ? '?' : to) + ' 轮'; }
+    else if (kw) { rows = log.filter(l => String(l.text || '').indexOf(kw) >= 0); how = '含「' + cut(kw, 20) + '」的原文'; }
+    else rows = log.slice(-(Number(q.n) || 20));
+    rows = rows.slice(0, 400);
+    const nth = (l) => (l.turn != null && isFinite(Number(l.turn))) ? ('第 ' + Number(l.turn) + ' 轮 · ') : '';
+    for (const l of rows) {
+      const nm = l.speakerName || (l.speaker ? (function () { try { return require('./knowledge').person(data, l.speaker).as; } catch (e) { return l.speaker; } })() : '');
+      push({ ref: '', title: nth(l) + (nm || l.type || ''), t: l.t || '', turn: l.turn, by: 'world', ...text(l.text, 400) });
+    }
+    if (!rows.length) misses.push({ what: w, kind: 'absent', why: '没有找到对应的场景原文（' + how + '）', suggest: '换 turn / 换关键词；或先看目录里的「你亲历」有多少条' });
+    /* 那一轮落下的记忆：谁记得、多深 —— 遗忘机制的接口 */
+    try {
+      const turns = [];
+      for (const l of rows) { const n = Number(l.turn); if (isFinite(n) && turns.indexOf(n) < 0) turns.push(n); }
+      const mems = Object.values(data.memories || {}).filter(m => turns.indexOf(Number(m.turn)) >= 0);
+      if (mems.length) {
+        const byOwner = {};
+        for (const m of mems) { const d = Math.round(RT.memDepth(data, m)); (byOwner[m.owner] = byOwner[m.owner] || []).push('（记得住程度 ' + d + '，想起过 ' + (m.activations || 1) + ' 次）' + cut(m.content, 70)); }
+        for (const owner of Object.keys(byOwner)) {
+          const as = (function () { try { return K.person(data, owner).as || owner; } catch (e) { return owner; } })();
+          push({ ref: owner, title: nth({ turn: turns[0] }) + as + ' 记得的', by: 'world', ...text(byOwner[owner].join(String.fromCharCode(10)), 1200) });
+        }
+        notes.push('★ 上面是**当时的原话**（客观记录）。**查得到 ≠ 谁还记得**：每条记忆后面的「记得住程度」就是遗忘机制给 TA 的现状 —— 低就该记不清，高才记得住细节。');
+      } else {
+        notes.push('★ 上面是**当时的原话**（客观记录）。但这一轮**没有任何人留下记忆** —— 谁提起来都只能算道听途说，允许说不准。');
+      }
+    } catch (eM) { DEG.hit('query.js:sceneMem', eM); }
+    return { items: items, notes: notes, misses: misses };
+  }
+  /* ★ v3.17 · 沉寂库（归档层）：**平时看不到，查得到**。归档 = 从眼前的可见降级成可调取；
+     检索口径：关键词 / 涉及的人 / 轮次区间 / 条数。**照样过门控**。 */
+  if (w === 'archive') {
+    const rows = require('./creator').archiveView(data, q);
+    for (const x of rows) {
+      const rowTxt = Array.isArray(x.row) ? x.row.join('　') : String(x.row || '');
+      let okRow = true;
+      try { const GATE = require('./gate'); if (GATE && typeof GATE.scrubText === 'function') okRow = !!GATE.scrubText(data, rowTxt); } catch (e) { okRow = true; }
+      if (!okRow) continue;
+      push({ ref: x.panel || '', title: '第' + (x.turn == null ? '?' : x.turn) + '轮 · ' + (x.panel || '') + '（归档）', t: x.at || '', turn: x.turn, by: 'world', ...text(rowTxt, 200) });
+    }
+    if (!rows.length) misses.push({ what: w, kind: 'absent', why: '沉寂库里没有匹配的东西', suggest: '换关键词 / 时间或轮次；归档是「降级不是删」' });
+    notes.push('这是**归档层**：它们已经从眼前的模块里退下来了（寿命到了或被判过时），原文仍在，查得到。');
     return { items: items, notes: notes, misses: misses };
   }
   if (w === 'news') {

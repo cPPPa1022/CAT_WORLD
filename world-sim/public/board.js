@@ -67,48 +67,100 @@
     if (/不足|缺|差/.test(s)) out.push('昨晚没睡够');
     return out.join('，');
   }
-  function band() {
+  /* ── ① 当前状态简介（用户 2026-09-27：「最上面的随身 去路 我 做成当前状态简介介绍
+     （补齐需要的东西 这些东西不够）」「这个是每回合都会自己更新吗」「而且这个一直在最上面
+     每次想看的时候都要翻到最上面？」）─────────────────────────────────────────────
+     三件事一起改：
+       · **补齐**：原来只有 在场/货架/随身/去路/我，钱只写现金、没有账目、没有时间地点与身份；
+       · **每回合都刷新**：每一回合都由 V（这一回合的存档投影）重画一遍；值变不变，取决于世界
+         有没有真的落账（钱由引擎按 tryPay/tryEarn 改，账目由 账目/钱款变动 两条 Update 落）；
+       · **不用翻到最上面**：搬到滚动区**之外**（#brief）常驻在叙事流上方，点一下收起。
+     仍然只放"你知道的"：去路只列认识的地方；账目上的名字在游戏侧已走同一把门控尺子。 */
+  function brief() {
     const rows = [];
+    /* ① 现在：什么时候 · 在哪儿 · 天什么样（天气没看见就不写"看见"了） */
+    const time = (V && V.time) || {};
+    const wx = (V && V.weather) || {};
+    const nowTxt = [txt(time.label) + (time.precise ? '' : '（体感）'), txt((V && V.place) && V.place.name),
+      (wx.seen ? txt(wx.text) : txt((V && V.weatherCue) || ''))].filter(Boolean).join(' · ');
+    if (nowTxt) rows.push(['现在', nowTxt]);
     const cast = ((V && V.cast) || []).filter(x => x && x.id !== 'player');
     if (cast.length) rows.push(['在场', cast.map(x => txt(x.name)).filter(Boolean).join('　')]);
     const shop = (V && V.shop) || [];
     if (shop.length) rows.push(['货架', shop.slice(0, 4).map(it => txt(it.name) + (it.price ? ' ¥' + it.price : '')).join('　')]);
+    /* ② 我：这个人是谁 —— 只写"他自己知道、也感觉得到"的（身份/职业/情绪/身体） */
+    const mev = (V && V.me) || {};
+    const idn = mev.identity || {};
+    const mine = [];
+    const myName = txt(mev.name);
+    if (myName && myName !== '你') mine.push(myName);
+    if (txt(idn.年龄)) mine.push(txt(idn.年龄));
+    if (txt(idn.身份)) mine.push(txt(idn.身份));
+    else if (txt(idn.职业)) mine.push(txt(idn.职业));
+    if (txt((mev.state || {}).mood)) mine.push(txt(mev.state.mood));
+    const bw = bodyWords(mev.state || {});
+    if (bw) mine.push(bw);
+    if (mine.length) rows.push(['我', mine.join(' · ')]);
+    /* ③ 钱与账（v3.20）：**现金与电子分开写**，欠着的一笔笔列出来 ——
+       用户那次 OOC 的一半就出在这里：界面上只写"兜里 15000 元"，
+       而世界里的钱（现金/电子）与"欠着谁多少"从来没有一处摆齐过。 */
+    const money = (V && V.money) || null;
+    if (money) {
+      const cur = txt(money.currency) || '元';
+      const wallet = ['现金 ' + (money.cash || 0) + cur];
+      if (money.digital) wallet.push('电子 ' + money.digital + cur);
+      rows.push(['钱', wallet.join('　')]);
+    }
+    const accs = ((V && V.accounts) || []).filter(a => a && a.status !== 'settled');
+    const accTxt = (a) => txt(a.name || a.who || '？') + ' ' + (a.amount || 0) + txt(a.currency || '元')
+      + (txt(a.what) ? '（' + txt(a.what) + (txt(a.due) ? ' · ' + txt(a.due).slice(5) + ' 前' : '') + '）' : '');
+    const owe = accs.filter(a => a.dir !== 'owed');
+    const owed = accs.filter(a => a.dir === 'owed');
+    if (owe.length) rows.push(['欠着', owe.slice(0, 4).map(accTxt).join('　')]);
+    if (owed.length) rows.push(['被欠', owed.slice(0, 4).map(accTxt).join('　')]);
+    /* ④ 随身：**列全**（原来越界 slice(0,6)，多了会被悄悄砍掉） */
     const inv0 = (V && V.inventory) || [];
     const invNames0 = inv0.map(x => txt(x && x.name ? x.name : x)).filter(Boolean);
-    if (invNames0.length) rows.push(['随身', invNames0.slice(0, 6).join('　')]);
+    if (invNames0.length) rows.push(['随身', invNames0.join('　')]);
+    /* ⑤ 去路：只列**你知道的**地方，不标"去过/没去过" —— 那是本局的足迹，不是这个人的经历。 */
     const place = (V && V.place) || {};
     const nodes = (V && V.map) || [];
     const here = nodes.filter(n => n && n.id === place.id)[0];
     if (here && (here.edges || []).length) {
-      /* 只列**你知道的**地方，不标"去过/没去过" —— 那是本局的足迹，不是这个人的经历。
-         （要标，得先把"开局认知清单"补上：见说明文档） */
       rows.push(['去路', here.edges.slice(0, 4).map(e => {
         const to = nodes.filter(n => n && n.id === e.to)[0];
         return txt(to ? to.name : e.to) + '（' + walkWords(e.minutes) + '）';
       }).join('　')]);
     }
-    /* 我的处境：只写这个人**感觉得到**的东西（钱、身上、身体、欠着的话）。
-       不写"疲劳 低 / 随身 4 件 / 还悬着 1 事" —— 那是数据库在说话，不是人。 */
-    const me = [];
-    const money = (V && V.money) || null;
-    if (money) me.push('兜里 ' + (money.cash || 0) + (money.currency || '元'));
-    const bw = bodyWords((V && V.me && V.me.state) || {});
-    if (bw) me.push(bw);
-    /* 悬着的事：**照数据原样写**（name 是事情本身，如"口角"；why 是原因，常常为空）。
-       不编"还欠着一句"这类句子 —— 那是我替世界加戏。 */
+    /* ⑥ 悬着的事：**照数据原样写**（name 是事情本身，如"口角"；why 是原因，常常为空）。
+       不编"还欠着一句"这类句子 —— 那是替世界加戏。 */
     const dayWords = (x) => { const s = txt(x && x.t).slice(5, 10); return s ? '（' + Number(s.slice(0, 2)) + '月' + Number(s.slice(3, 5)) + '日）' : ''; };
     const loose = (V && V.loose) || [];
     const looseTxt = loose.slice(0, 3).map(x => txt(x && x.name) + (x && x.why ? '——' + txt(x.why) : '') + dayWords(x)).filter(Boolean).join('　');
-    if (looseTxt) me.push('还悬着 ' + looseTxt);
-    if (me.length) rows.push(['我', me.join('　')]);
+    if (looseTxt) rows.push(['悬着', looseTxt]);
     if (!rows.length) return null;
-    const box = h('div', 'bband');
-    for (const r of rows) {
-      const row = h('div', 'brow');
-      row.appendChild(h('span', 'brow-k', r[0]));
+    /* 收起时只留第一行（"现在"）。状态存在本地：收起过一次，下次进来还是收起的。 */
+    let closed = false;
+    try { closed = localStorage.getItem('ws_brief_closed') === '1'; } catch (e) { closed = false; }
+    const box = h('div', 'bband' + (closed ? ' closed' : ''));
+    rows.forEach((r, i) => {
+      const row = h('div', 'brow' + (i === 0 ? ' brow-now' : ' bd'));
+      const k = h('span', 'brow-k', r[0]);
+      if (i === 0) {
+        k.textContent = (closed ? '▸ ' : '▾ ') + r[0];
+        k.classList.add('bhead');
+        k.title = closed ? '展开当前状态简介' : '收起当前状态简介';
+        k.onclick = function () {
+          const c = box.classList.toggle('closed');
+          try { localStorage.setItem('ws_brief_closed', c ? '1' : '0'); } catch (e) {}
+          k.textContent = (c ? '▸ ' : '▾ ') + r[0];
+          k.title = c ? '展开当前状态简介' : '收起当前状态简介';
+        };
+      }
+      row.appendChild(k);
       row.appendChild(h('span', 'brow-v', r[1]));
       box.appendChild(row);
-    }
+    });
     return box;
   }
 
@@ -131,23 +183,43 @@
     const t = bb.type;
     if (t === 'stage-tag') return h('div', 'bstage', txt(bb.text));
     if (t === 'ambient' || t === 'narration') {
-      const bx = h('div', 'bnarr' + (t === 'ambient' ? ' amb' : ''));
-      bx.appendChild(h('div', 'bs-v', txt(bb.text)));
+      /* ★ v3.5：旁白/环境也走 cue() —— 不只是为了加标签，更是为了让**标签列对齐**。
+         原来它们是一根光秃秃的 .bs-v（没有 .bs 这层 flex 父级），左边没有 46px 的标签列，
+         于是它们的正文比台词靠左 46px，"列"根本不成列。 */
+      const isAmb = (t === 'ambient');
+      const bx = h('div', 'bnarr' + (isAmb ? ' amb' : ''));
+      const s = cue(isAmb ? '环境' : '旁白', txt(bb.text), 'narr' + (isAmb ? ' amb' : ''));
+      if (s) bx.appendChild(s);
       return bx;
     }
     const isMe = (t === 'user-action' || t === 'outcome');
     const blk = h('div', 'bperson' + (isMe ? ' mine' : ''));
     const nm = isMe ? '你' : who(bb);
     if (nm) { const head = h('div', 'bname-row'); head.appendChild(h('span', 'bname', nm)); blk.appendChild(head); }
+    /* ★ v3.5：玩家那一行的文字里**带着「你: 」前缀**（sceneLog 里就是这么存的），
+       而块头已经有一个「你」的名字行 + 一个「动作」标签 ⇒ 屏幕上三次说"这是你"：
+       「你 / 动作 / 你: 嗯嗯 请进请进」。资料包那一侧早就剥掉了这个前缀
+       （ai.js 的「最近场景原文」那一行做了剥离），界面这边漏了。
+       ⚠️ 这里**不要写那条正则的字面量**：它里面有 `*` 加 `/`，放进块注释会把注释提前闭合。 */
+    const body = (v) => { const s = txt(v); return isMe ? s.replace(/^你\s*[:：]\s*/, '') : s; };
     if (t === 'dialogue') {
-      const s1 = cue('', '「' + txt(bb.text) + '」', 'said'); if (s1) blk.appendChild(s1);
+      /* ★ v3.5 修（用户原话：「一行行的字的区分只有字号不同 颜色基本看不出差别
+         很难区分这些是干什么的」）——
+         `cue(k, v, cls)` 的第一个参数 k 就是「这一行是什么」的标签槽，
+         而这里**三个调用点全传了空串** ⇒ `board.css` 里那条专为它写的版式
+         （`.bs-k`：40px 固定列 + 字距 + user-select:none）**一次都没渲染过**。
+         于是屏幕上只剩亮度差，而亮度差全在同一条灰蓝色轴上 → 分不出台词/旁白/动作/环境。
+         更早那版（board.js:118 的注释里还留着）传的是 '▸' —— 换成块流时把标签丢了。
+         现在把标签填回来：**"这是什么"由文字说，颜色只做辅助**（反模式 #6：颜色不能是唯一载体）。 */
+      const s1 = cue('台词', '「' + txt(bb.text) + '」', 'said'); if (s1) blk.appendChild(s1);
       const detail = [txt(bb.action), txt(bb.expression), txt(bb.voice)].filter(Boolean).join('　');
-      const c1 = cue('', detail, 'detail'); if (c1) blk.appendChild(c1);
+      const c1 = cue('神情', detail, 'detail'); if (c1) blk.appendChild(c1);
     } else {
       /* v3.3：**结果行不能再混进 detail**。.bs.detail 的颜色是 --fg-3，而 tokens.css 给
          --fg-3 的注释是「极次要·纯装饰，不承载信息」—— 玩家动作的确定性结论
          （「你买好了去临江的车票——30块」）是事实，不是装饰。它原来和"他皱了皱眉"同色同字号。 */
-      const a2 = cue('', txt(bb.text), t === 'outcome' ? 'out' : 'detail'); if (a2) blk.appendChild(a2);
+      const isOut = (t === 'outcome');
+      const a2 = cue(isOut ? '结果' : '动作', body(bb.text), isOut ? 'out' : 'detail'); if (a2) blk.appendChild(a2);
     }
     return blk;
   }
@@ -181,7 +253,14 @@
     const focusIds = ((V && V.focus) || []).map(txt).filter(Boolean);
 
     const wrap = h('div', 'board');
-    const b = band(); if (b) wrap.appendChild(b);
+    /* ★ v3.20：状态简介搬到 #brief —— **滚动区之外**（用户：「这个一直在最上面
+       每次想看的时候都要翻到最上面？」）。它每一回合都在这里被重画一次（V 是本回合投影）。 */
+    const host = document.getElementById('brief');
+    if (host) {
+      host.innerHTML = '';
+      const b = brief();
+      if (b) { host.appendChild(b); host.classList.remove('hidden'); } else { host.classList.add('hidden'); }
+    }
     /* ★ v2.14 顺序块流：**log 的顺序就是阅读顺序**，一条 beat 一块，画完就不动。
        不再按幕分组、不再按人聚合、不再渐隐 —— 因为"按人聚合"会打散时间，
        而"渐隐/折叠"会让玩家看不到自己刚做过什么（用户："我说出去，但我并不知道我没有出去"）。

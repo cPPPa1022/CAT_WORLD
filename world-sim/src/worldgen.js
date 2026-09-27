@@ -137,7 +137,7 @@ function worldGenSystem(userSet) {
   const selfLine = selfTxt
     ? '【玩家对自己的设定】玩家填的身份档案：' + selfTxt.slice(0, 800) + '。这些是"玩家想成为的样子"，你生成世界时可以把它们变成"玩家在这个世界的样子"，但它们不是世界规则——世界可以拒绝它们（见【冲突规则】）；能被世界接纳的部分，请写进 player{name,identity,等}。'
     : '【玩家设定】玩家未填写自我设定：请由你为玩家【设计一个与这个世界及开场最契合的、具体的身份】——本地人、过客、学徒、旧识、来办事的、逃出来的、迷路的……都可以，判断标准只有一个：这个身份放进你创造的世界里是否"自然成立"。外来者只是众多可能之一（且只在真正合适时才是答案），禁止使用"初来乍到/身份留白/待定"这类空泛占位。必须写进 player{name,identity}，其中 identity 用一句话说清"我是谁、我为什么在这里、我对这里熟不熟"；可加 age/role/appearance/backstory/secret 让"我"更立体。';
-  return [
+  return AI.withCharter([
     '你是【世界模拟器】的世界生成器。请从零创造【一个完整的、崭新的世界】。',
     '不要模仿、套用或参考任何已有的故事、游戏、设定模板——世界可以是你想象的任何样子：古代/现代/未来/修仙/志怪/末世/星际/奇幻/蒸汽/克苏鲁/荒诞派……全由你判断，只要让它自己自洽。',
     '世界要有呼吸：一个地方 + 一个以上鲜明的人 + 你作为初来乍到者，且要有"这里为什么安静/嘈杂/奇怪"的一层氛围。可以是一个大世界的切面（王朝的一角、都市的一隅、星际的小站、宇宙的尽头都可以）。',
@@ -150,7 +150,7 @@ function worldGenSystem(userSet) {
     '【玩家身世 · 关键】玩家的身份/来历/样貌/性格/本领/愿望必须给具体完整内容，禁止"身份待定/初来乍到/随缘"等空泛占位——游戏开局玩家就要清清楚楚知道自己是谁、为什么在这里。玩家现在明白的一切放进 player 字段；存在但还没想起来的旧事/渊源放进 shadows，剧情提到时才想起来。',
     selfLine,
     '不要输出 JSON 之外的文字。'
-  ].join(String.fromCharCode(10));
+  ].join(String.fromCharCode(10)));
 }
 
 async function genWorldPack(cfg, prompt, userSet) {
@@ -226,7 +226,7 @@ function heuristicCheck(pack, us) {
 
 // LLM 核对（接入模式）：给出更准的三档判定
 function checkSystem() {
-  return [
+  return AI.withCharter([
     '你是【世界模拟器】的设定核对员。输入：一份世界包摘要 + 一份玩家自我设定（User 设定）。',
     '你的唯一任务：判断玩家设定能否在世界上成立，输出三档之一。世界是主体，玩家设定不能凌驾于世界之上。',
     '判定规则：',
@@ -235,7 +235,7 @@ function checkSystem() {
     '  3. 冲突且无可自洽的桥（用例：修仙者硬闯现实世界，没写穿越）→ verdict=冲突，advice 给出三个选项：改设定 / 补自洽的桥 / 接受降级（按普通人行动）。',
     '  4. 玩家的"年龄/姓名/性格/背景"等在世界上总能成立（除非与硬事实冲突如"灵族活了三百年"在无灵世界）——这些不算冲突。',
     '输出 JSON（不要多余文字）：{ "status": "pass或bridge或conflict", "issues": [ { "point": "设定点", "verdict": "通过或需补桥或冲突", "advice": "一句话说明并给出处理" } ] }'
-  ].join(String.fromCharCode(10));
+  ].join(String.fromCharCode(10)));
 }
 async function checkSetup(pack, us, cfg) {
   if (!selfPresent(us)) return { status: 'pass', issues: [], note: '未提供玩家设定（按世界默认生成）' };
@@ -250,7 +250,7 @@ async function checkSetup(pack, us, cfg) {
       const out = await AI.llmJSONDeep(cfg, [
         { role: 'system', content: checkSystem() },
         { role: 'user', content: '【世界包摘要】' + sum + '\n【玩家自我设定】' + JSON.stringify(us) }
-      ], () => heuristicCheck(pack, us), Math.min(4096, AI.cfgMax(cfg)));
+      ], () => heuristicCheck(pack, us), AI.cfgMax(cfg));
       if (out && out.__fallback) return out.value;
       if (out && out.status && out.issues) return out;
     } catch (e) { /* 落回启发式 */ }

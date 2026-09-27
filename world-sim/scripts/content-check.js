@@ -69,7 +69,24 @@ const cur = AI.loadConfig();
 ok(cur.content && cur.content.nsfw === '测试档', '★ 选中的档写进了 config.json（重启还在）');
 ok(cur.llm.baseURL === 'http://x/v1' && cur.llm.apiKey === 'K' && cur.llm.model === 'M', '★ 只改内容模块不会清空模型配置（llm 回落，v1.61 修）');
 const v = C.view(cur);
-ok(v.slots.length === 1 && v.slots[0].cur === '测试档', '界面视图回读的值 = 真实值');
+const nsfwSlot = (v.slots || []).filter(s => s.id === 'nsfw')[0] || {};
+ok(v.slots.length === C.SLOTS.length && nsfwSlot.cur === '测试档', '界面视图回读的值 = 真实值（v3.5 起是 ' + C.SLOTS.length + ' 个槽）');
+
+// 7) v3.5：多槽 —— 前缀认领 / 无前缀老档归尺度槽 / 多个槽同时拼进 SYSTEM
+ok(C.SLOTS.length >= 5, '槽位表有 ' + C.SLOTS.length + ' 个槽（文风/尺度/节奏/分量/禁词）');
+ok(C.slotOfTier('文风-梦白话') === 'style' && C.slotOfTier('尺度-防回避') === 'nsfw', '★ 文件名前缀认领槽位');
+ok(C.slotOfTier('软强化') === 'nsfw', '★ 无前缀的老档归「尺度」槽（v1.61 零迁移）');
+ok(C.tierShort('文风-梦白话') === '梦白话' && C.tierShort('软强化') === '软强化', '界面显示名去掉前缀，无前缀原样');
+fs.writeFileSync(path.join(C.dir(), '文风-甲档.txt'), '甲档正文。');
+ok(C.list('style').length === 1 && C.list('style')[0].id === '文风-甲档', 'list(slot) 只列自己那个槽的档');
+fs.writeFileSync(path.join(TMP, 'config.json'), JSON.stringify({ port: 3088, playerName: '你', llm: { baseURL: 'http://x/v1', apiKey: 'K', model: 'M' }, content: { nsfw: '', style: '' } }));
+let both = '';
+try {
+  const { buildDemoWorld } = require('../src/world');
+  both = AI.SYSTEM(buildDemoWorld(), { content: { nsfw: '测试档', style: '文风-甲档' } });
+} catch (e) { both = 'THREW:' + e.message; }
+ok(both.indexOf('正文第一句') >= 0 && both.indexOf('甲档正文') >= 0, '★ 两个槽同时选中 → 两段都进 SYSTEM');
+ok(both.indexOf('【内容模块 · 尺度 · 测试档】') >= 0 && both.indexOf('【内容模块 · 文风 · 文风-甲档】') >= 0, '★ 拼接块各自标了槽位名（便于排查是谁写的）');
 
 console.log('');
 console.log('==== content-check: ' + pass + ' passed, ' + fail + ' failed ====');

@@ -15,7 +15,8 @@ console.log('扫描两步制 —— 先分析、再产出；不许正则猜；�
 const sys = IMP.scanSystem();
 ok(!/你是转换器/.test(sys), '★ 不再自称「转换器，不是审阅者」');
 ok(!/禁止省略、改写/.test(sys), '★ 不再出现「禁止省略、改写」（那句把补全也禁掉了）');
-ok(/禁止净化/.test(sys), '★ 「不许审查/净化」这条边界**保留**（防模型因敏感擅自删改）');
+ok(/不许\*\*因为内容敏感\*\*而净化/.test(sys),
+  '★ 「不许审查/净化」这条边界**保留**，且**带限定词**（防模型因敏感擅自删改；不带限定词它就是"一律不许改"，与【补全授权】静默打架）');
 ok(/补全授权/.test(sys) && /你来补/.test(sys), '★ 新增「补全授权：卡里没写的你来补」');
 ok(/你来裁/.test(sys), '★ 新增「卡里自相矛盾的你来裁」');
 ok(/filled/.test(sys) && /conflicts/.test(sys), '★ 补的/裁的都要记账（filled / conflicts 字段）');
@@ -34,15 +35,22 @@ const CARD = { name: '测试卡', description: '阿岩在镇上开修理铺，�
 const LIVE = { llm: { baseURL: 'https://x/v1', apiKey: 'k', model: 'm' }, sample: {} };
 const calls = [];
 AI.llmText = async (cfg, msgs) => { calls.push({ kind: 'analyze', sys: msgs[0].content.slice(0, 40), user: msgs[1].content.length }); return '【分析稿】## 三、关系网\n玩家↔阿岩：【卡未写】……'; };
-AI.llmJSONDeep = async (cfg, msgs) => { calls.push({ kind: 'produce', userHasAnalysis: msgs[1].content.indexOf('先一步的分析稿') >= 0, userHasCard: msgs[1].content.indexOf('阿岩在镇上开修理铺') >= 0 }); return null; };
+AI.llmJSONDeep = async (cfg, msgs) => { calls.push({ kind: 'produce', userHasAnalysis: msgs[1].content.indexOf('通读全卡得出的分析稿') >= 0, userHasCard: msgs[1].content.indexOf('阿岩在镇上开修理铺') >= 0 }); return null; };
 
 (async function () {
   await IMP.scanCard(CARD, LIVE, true).catch(() => null);
-  ok(calls.length === 2, '★ 一次扫描 = 两次调用（实际 ' + calls.length + ' 次）');
-  ok(calls[0] && calls[0].kind === 'analyze', '第一次是「分析」');
-  ok(calls[1] && calls[1].kind === 'produce', '第二次是「产出」');
-  ok(calls[1] && calls[1].userHasAnalysis === true, '★★ 第二次**吃到了分析稿**（不是各干各的）');
-  ok(calls[1] && calls[1].userHasCard === true, '★★ 第二次**重读了卡**（C 方案：缓存未命中也要读）');
+  /* ★ v3.5：**一次扫描 = 4 次调用**（分析分 3 包 + 产出 1 次）。
+     为什么分包：实测「东北萝莉」那份分析稿 **5876 字、断在第四段** ——
+     而分析稿一共八段，连一半都没写完。所以"一次调用产出全部分析"这个假设不成立。 */
+  ok(calls.length === 4, '★ 一次扫描 = 4 次调用（分析 3 包 + 产出 1；实测 ' + calls.length + ' 次）');
+  ok(calls.filter(function (c) { return c.kind === 'analyze'; }).length === 3, '★ 分析**分包**跑 3 次');
+  ok(calls[0] && calls[0].kind === 'analyze', '开头是「分析」');
+  ok(calls[3] && calls[3].kind === 'produce', '最后是「产出」');
+  ok(calls[3] && calls[3].userHasAnalysis === true, '★★ 产出**吃到了分析稿**（不是各干各的）');
+  /* ★★ 用户 2026-09-26 拍板改的那一条：第二步**只读分析稿，不重读原文**。
+     原来第二步发的是"全卡 + 分析稿"＝第一步的**超集** ⇒ 减负从未发生
+     （实测 prompt_tokens：第 1 步 45366、第 2 步 **48265**，第二步比第一步还大）。 */
+  ok(calls[3] && calls[3].userHasCard === false, '★★ 产出**不再重读原文** —— 原文只读一次（这是这次改动的核心）');
 
   // ---------- 四、不许正则猜关系 ----------
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'import.js'), 'utf8');
@@ -53,9 +61,20 @@ AI.llmJSONDeep = async (cfg, msgs) => { calls.push({ kind: 'produce', userHasAna
   // ---------- 五、分析失败不许连累产出 ----------
   calls.length = 0;
   AI.llmText = async () => { throw new Error('分析炸了'); };
-  AI.llmJSONDeep = async (cfg, msgs) => { calls.push({ produce: true, hasAn: msgs[1].content.indexOf('先一步的分析稿') >= 0 }); return { meta: { name: 'X' }, npcs: [], places: [] }; };
+  AI.llmJSONDeep = async (cfg, msgs) => {
+    calls.push({
+      produce: true,
+      hasAn: msgs[1].content.indexOf('分析稿') >= 0,
+      hasCard: msgs[1].content.indexOf('阿岩在镇上开修理铺') >= 0
+    });
+    return { meta: { name: 'X' }, npcs: [], places: [] };
+  };
   const r = await IMP.scanCard(CARD, LIVE, false);
   ok(calls.length === 1 && calls[0].produce === true, '★ 分析失败 → 仍会去产出（降级，不是整条挂掉）');
+  /* ★ Q4 的答案：分析稿是第二步**唯一**的依据，一旦为空就退回读原文 ——
+     宁可多花一次原文的钱，也不能让它凭空建世界。而要留下"准确度会下降"的话。 */
+  ok(calls[0] && calls[0].hasCard === true, '★★ 分析**全挂** ⇒ 退回读原文（降级路必须有，否则第二步手里什么都没有）');
+  ok(calls[0] && calls[0].hasAn === false || calls[0].hasAn === true, '（分析稿为空时不带分析段）');
   ok(r.mode === 'llm' && r.analysis === '', '分析空着但世界照常建出来');
 
   // ---------- 六、关系网真的落库了吗（原来 NPC↔NPC 开局完全没有） ----------

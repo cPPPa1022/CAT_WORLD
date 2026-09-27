@@ -22,7 +22,7 @@ while ((m = re.exec(body))) impl.add(m[1]);
 
 console.log('contract: ' + C.UPDATE_TYPE_NAMES.length + ' 类 | applyUpdates 实现: ' + impl.size + ' 类');
 
-ok(C.UPDATE_TYPE_NAMES.length === 19, '契约 19 类（实得 ' + C.UPDATE_TYPE_NAMES.length + '）');   // v3.1：+设定补全（开局编译）
+ok(C.UPDATE_TYPE_NAMES.length === 21, '契约 21 类（实得 ' + C.UPDATE_TYPE_NAMES.length + '）');   // v3.1：+设定补全（开局编译）；v3.20：+钱款变动/账目（钱与账）
 
 const bad = C.assertContract(impl);
 ok(bad.length === 0, 'assertContract 干净' + (bad.length ? ' -> ' + bad.join(' ; ') : ''));

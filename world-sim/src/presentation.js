@@ -5,6 +5,49 @@ const { getEntity, present } = require('./store');
 const { dayPart } = require('./runtime');
 
 // ---------- 工具注册表（app id 为前后端约定；前端 APP_RENDER 渲染） ----------
+/* ★ v3.5 · 「0.5 壳」—— AI 不需要重复写的基础。
+   用户原话（2026-09-26）：
+     「A 是创造 从 0.5 到 1，懂我意思吗？存档是建立在这个基础之上的。
+       什么是 0.5？就是**基础中的基础**，不值得 ai 重复去写的内容，
+       例如聊天框，例如执行按钮，唉等等等等。」
+     「所以我判断说这个东西它很难搞坏模拟器，只会给存档搞炸。」
+
+   为什么把它做成一份**显式清单**：
+     · 这张表就是 AI 的**词汇表** —— 它写代码时只能在这层壳上做增量，
+       不能重画聊天框、不能重写执行按钮。**这就是爆炸半径小的原因。**
+     · 也是提示词的输入：告诉它"这些已经有了，别重复写"。
+     · 加一样壳 = 改这张表 + 改这里，**不许散在各处**（一个真相源）。 */
+/* ★ v3.11（用户 2026-09-27）：「0.5 说的还是太死 限制它的发挥。**只保留基础游玩的核心，其余的全部放开**」。
+   所以这张表分两栏：
+     core = **没有它就不能玩**（也不许重画）—— 叙事流 / 输入与执行 / 面板壳 / 门控
+     open = **已经搭好、但你可以重做/替换/扩展** —— 状态条 / 侧栏 / 生图 / 查询回执
+   为什么 open 那几样还要列出来：列出来是「**别重复造轮子**」，不是「不许动」。
+   （parts = core+open，保留旧读法；读它的地方见 framework.creatorPromptBlock 与 world-template-check。） */
+const SHELL = {
+  v: 2,
+  core: [
+    { id: 'board', name: '叙事流', desc: 'beats 渲染、cue 标签（台词/神情/动作/结果/旁白/环境）、滚动' },
+    { id: 'input', name: '输入与执行', desc: '输入框、执行按钮、自定义动作' },
+    { id: 'panel', name: '面板壳', desc: '打开/关闭、页签网格、单页签全屏' },
+    { id: 'gate', name: '门控层', desc: '名字门控 · 知识门控 · 印象门控 —— **唯一不许绕的东西**' }
+  ],
+  open: [
+    { id: 'status', name: '顶部状态条', desc: '时间 / 地点 / 天气 —— 你可以换一种呈现' },
+    { id: 'sidebar', name: '侧栏', desc: '面板开合 —— 你可以改布局' },
+    { id: 'image', name: '生图链路', desc: '九维档案 → 提示词 → ComfyUI —— 你可以拿它做自己的画面板块' },
+    { id: 'query', name: '查询回执', desc: 'AI 自己查资料（catalog/docs/person/scene…）—— 你可以让板块也走这条路' }
+  ],
+  parts: [
+    { id: 'board', name: '叙事流', desc: 'beats 渲染、cue 标签（台词/神情/动作/结果/旁白/环境）、滚动' },
+    { id: 'input', name: '输入与执行', desc: '输入框、执行按钮、自定义动作' },
+    { id: 'panel', name: '面板壳', desc: '打开/关闭、页签网格、单页签全屏' },
+    { id: 'status', name: '顶部状态条', desc: '时间 / 地点 / 天气' },
+    { id: 'sidebar', name: '侧栏', desc: '面板开合' },
+    { id: 'image', name: '生图链路', desc: '九维档案 → 提示词 → ComfyUI' },
+    { id: 'query', name: '查询回执', desc: 'AI 自己查资料（catalog/docs/person/…）' },
+    { id: 'gate', name: '门控层', desc: '名字门控 · 知识门控 · 印象门控' }
+  ]
+};
 const TOOL_PRESETS = {
   phone:    { id: 'phone',    name: '手机',   icon: '📱', apps: ['sms', 'contacts', 'clock', 'calendar', 'news', 'weather', 'map', 'album'], via: 'phone' },
   brick:    { id: 'brick',    name: '大哥大', icon: '📟', apps: ['sms', 'contacts'], via: 'phone' },
@@ -33,6 +76,18 @@ function deriveTools(carries, era, extraText) {
   if (c.map === 'paper') t.push(TOOL_PRESETS.paper);
   else if (c.map === 'compass' || (isCult && !c.map)) t.push(TOOL_PRESETS.compass);
   return t;
+}
+
+/* 工具清单的**唯一入口** —— 「同一件事只能有一个真相源」。
+   ★ v3.5 收口的原因（真隐患，不是洁癖）：原来 import.js 有**两处**直接调 `deriveTools`，
+     而且喂的 extraText 不一样（建档那处带 firstScene、落库那处只带 name）——
+     同一个世界**可能推出两套工具**，而两边都不会报错。
+   现在：建档算一次、落库直接用它；只有没算过的包（启发式/旧包）才现算。
+   `extra` 参与"修仙/志怪"那类判断，所以调用方要把能给的文本一起递进来。 */
+function toolsFor(meta, extra) {
+  const m = meta || {};
+  const ex = String(extra == null ? (m.name || '') : extra);
+  return deriveTools(m.carries, m.era, ex);
 }
 
 function hasTimeDevice(data) {
@@ -613,4 +668,4 @@ function sceneModel(data, nameFn) {
 
 function buildSceneArt(data, nameFn) { const m = sceneModel(data, nameFn); return m && m.art; }
 
-module.exports = { TOOL_PRESETS, deriveTools, hasTimeDevice, mainVia, buildSceneArt, sceneModel, layoutFingerprint, canSeeWeather, canRadio, weatherFx, ensureArt, scanMarks, ART_SCHEMA };
+module.exports = { SHELL, TOOL_PRESETS, deriveTools, toolsFor, hasTimeDevice, mainVia, buildSceneArt, sceneModel, layoutFingerprint, canSeeWeather, canRadio, weatherFx, ensureArt, scanMarks, ART_SCHEMA };

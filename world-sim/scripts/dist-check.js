@@ -75,6 +75,16 @@ ok(mismatch.length === 0, '★ 每个文件内容都一致' + (mismatch.length ?
   ok(stale.length === 0, '副本根目录没有源码里不存在的 .js' + (stale.length ? '（' + stale.join(', ') + '）' : ''));
 }
 
+/* ④ ★ v3.6：**裁判清单必须与部署脚本对得上**。
+   起因：deploy-dist.js 原来只拷 src/ 与 public/，而上面的 FILES 是连根目录单文件一起判的
+   —— 于是"改了 server.js 没进交付副本"没有任何东西会拦（实测两条红才发现）。
+   这类"两处清单各写一份"的账，本项目栽过太多次：让裁判自己盯着部署脚本。 */
+{
+  const dep = fs.readFileSync(path.join(ROOT, 'scripts', 'deploy-dist.js'), 'utf8');
+  const miss = FILES.filter(f => dep.indexOf("'" + f + "'") < 0);
+  ok(miss.length === 0, 'deploy-dist.js 覆盖了裁判清单里的每个文件' + (miss.length ? '（漏：' + miss.join(', ') + '）' : '（' + FILES.length + ' 个）'));
+}
+
 console.log('');
 console.log('==== dist-check: ' + pass + ' passed, ' + fail + ' failed ====');
 process.exitCode = fail ? 1 : 0;

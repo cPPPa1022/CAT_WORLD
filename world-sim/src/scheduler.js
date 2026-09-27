@@ -22,9 +22,9 @@ async function exReply(data, cfg, task) {
   if (AI.isLive(cfgMsg)) {
     try {
       const r = await AI.llmJSON(cfgMsg, [
-        { role: 'system', content: AI.charterShort() + '\n' + AI.msgAI(data, { npc: getEntity(data, npcId) || {}, msgs: sentMsgs }) },
+        { role: 'system', content: AI.withCharter(AI.msgAI(data, { npc: getEntity(data, npcId) || {}, msgs: sentMsgs })) },
         { role: 'user', content: '到时间了，回吧。' }
-      ], () => AI.mockReply(data, joined, npcId), Math.min(2048, AI.cfgMax(cfgMsg)));
+      ], () => AI.mockReply(data, joined, npcId), AI.cfgMax(cfgMsg));
       if (r && r.__fallback) reply = r.value;
       else if (r && typeof r.body !== 'undefined') reply = { body: r.body, note: r.note || '' };
     } catch (e) { DEG.hit("scheduler.js", e); }
@@ -42,9 +42,9 @@ async function exCalc(data, cfg, task) {
   if (!AI.isLive(cfg)) return { conclusion: '', detail: {} };
   try {
     const out = await AI.llmJSON(cfg, [
-      { role: 'system', content: AI.charterShort() + '\n你是【世界模拟器】的副 AI-计算（能力：发现镜框外的小事）。输入结构化世界快照，输出事件候选 JSON：{"candidates":[{"text":"一句话","type":"环境|遭遇|日常","expireM":分钟,"sev":"低"}]}，1~3条，烈度不超L2，禁止大事凭空，禁止编造已有事实。除了不越界，选什么由你判断——没有注明的就是你的自由。' },
+      { role: 'system', content: AI.withCharter('你是【世界模拟器】的副 AI-计算（能力：发现镜框外的小事）。输入结构化世界快照，输出事件候选 JSON：{"candidates":[{"text":"一句话","type":"环境|遭遇|日常","expireM":分钟,"sev":"低"}]}，1~3条，烈度不超L2，禁止大事凭空，禁止编造已有事实。除了不越界，选什么由你判断——没有注明的就是你的自由。') },
       { role: 'user', content: JSON.stringify({ 时间: data.current.time, 地点: (data.entities[data.current.sceneId] || {}).name || '某处', 天气: data.current.weather, 在场: Object.values(data.entities).filter(e => e.type === 'person' && e.id !== 'player' && e.state && e.state.location === data.current.sceneId).map(e => e.name || e.id), 世界基调: (data.meta && data.meta.era) || '' }) }
-    ], () => null, Math.min(2048, AI.cfgMax(cfg)));
+    ], () => null, AI.cfgMax(cfg));
     if (!out || out.__fallback || !Array.isArray(out.candidates)) return { conclusion: '', detail: {} };
     return { conclusion: (out.candidates[0] || {}).text || '', detail: { candidates: out.candidates.slice(0, 3) } };
   } catch (e) { return { conclusion: '', detail: {} }; }
@@ -57,9 +57,9 @@ async function exDigest(data, cfg, task) {
     const stream = (data.ledger || []).filter(l => l.t >= (task.since || data.current.time)).slice(-20).map(l => ({ 时间: (l.t || '').slice(11, 16), 类型: l.type, 内容: l.desc }));
     const msgs = (data.messages || []).filter(m => m.t >= (task.since || data.current.time) && m.to === 'player' && m.body).map(m => m.body);
     const out = await AI.llmJSON(cfg, [
-      { role: 'system', content: AI.charterShort() + '\n你是【世界模拟器】的副 AI-摘要（能力：不在场简报）。输出 JSON：{"digest":"200字以内中文简报：你睡着/离开期间世界发生了什么与你相关的事；没有则不写"}。挑什么怎么说由你判断。' },
+      { role: 'system', content: AI.withCharter('你是【世界模拟器】的副 AI-摘要（能力：不在场简报）。输出 JSON：{"digest":"200字以内中文简报：你睡着/离开期间世界发生了什么与你相关的事；没有则不写"}。挑什么怎么说由你判断。') },
       { role: 'user', content: JSON.stringify({ 事件: stream, 消息: msgs }) }
-    ], () => null, Math.min(1024, AI.cfgMax(cfg)));
+    ], () => null, AI.cfgMax(cfg));
     if (!out || out.__fallback || !out.digest) return { conclusion: '', detail: {} };
     return { conclusion: String(out.digest).slice(0, 400), detail: {} };
   } catch (e) { return { conclusion: '', detail: {} }; }
@@ -130,9 +130,9 @@ async function exActor(data, cfg, task) {
   if (AI.isLive(cfg)) {
     try {
       const r = await AI.llmJSON(cfg, [
-        { role: 'system', content: AI.charterShort() + '\n你是【世界模拟器】的角色模拟器。你现在是：' + name + '。' + packLines.join('；') + '。' + (mems.length ? ('你记得：' + mems.join('；')) : '') + '。' + seen.join('。') + '。' + '输出 JSON：{"line":"你的一句台词（口语化）","action":"你的一动作（三四字）","inner":"你的内心判断（一句话，给导演看的）"}。你只代表' + name + '说话，禁止写他人、禁止导演口吻、禁止超出一句台词。' },
+        { role: 'system', content: AI.withCharter('你是【世界模拟器】的角色模拟器。你现在是：' + name + '。' + packLines.join('；') + '。' + (mems.length ? ('你记得：' + mems.join('；')) : '') + '。' + seen.join('。') + '。' + '输出 JSON：{"line":"你的一句台词（口语化）","action":"你的一动作（三四字）","inner":"你的内心判断（一句话，给导演看的）"}。你只代表' + name + '说话，禁止写他人、禁止导演口吻、禁止超出一句台词。') },
         { role: 'user', content: task.context || '面对眼前的人，你的反应？' }
-      ], () => mockActor(data, npc), Math.min(768, AI.cfgMax(cfg)));
+      ], () => mockActor(data, npc), AI.cfgMax(cfg));
       if (r && !r.__fallback && (r.line || r.action)) out = r;
     } catch (e) { DEG.hit("scheduler.js", e); }
   }
@@ -194,14 +194,14 @@ async function exImage(data, cfg, task) {
   if (aiPrompt && AI.isLive(cfg)) {
     try {
       const r = await AI.llmJSON(cfg, [
-        { role: 'system', content: imageJobCard(mode) },
+        { role: 'system', content: AI.withCharter(imageJobCard(mode)) },
         { role: 'user', content: JSON.stringify({
           导演笔记: { 谁: whoArr, 状态: pack.state, 场景: pack.scene || null, 要点: pack.note || '', 临时笔触: pack.style || '' },
           人物外貌库: whoInfo.map(w => ({ 名字: w.name, 锚点: (w.hasFace ? w.face : '（无）') + (w.weak ? '（弱锚点）' : ''), 当前状态: w.state })),
           场景快照: pack.sceneNow,
           世界设定: { 时代: (data.meta || {}).era || '', 画风: ((data.meta || {}).artStyle || (cfg.image && cfg.image.style)) || '' }
         }) }
-      ], () => null, Math.min(1024, AI.cfgMax(cfg)));
+      ], () => null, AI.cfgMax(cfg));
       if (r && !r.__fallback && (r.prompt || r.提示词)) ai = { sceneTitle: String(r.sceneTitle || '').slice(0, 15), prompt: String(r.prompt || r.提示词 || '').slice(0, 1200) };
     } catch (e) { DEG.hit("scheduler.js", e); }
   }

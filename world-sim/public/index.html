@@ -1,16 +1,16 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小猫的世界 · world-sim</title>
-<link rel="stylesheet" href="/style.css?v=73">
+<link rel="stylesheet" href="/style.css?v=86">
 <link rel="stylesheet" href="/tokens.css?v=61">
 <link rel="stylesheet" href="/studio.css?v=17">
 <!-- UX 版（2026-09-19）：第一印象覆盖层。必须排在最后，它靠覆盖前三个文件生效。 -->
 <link rel="stylesheet" href="/ux.css?v=1">
 <!-- UX v2：「各就各位」版面（board.js）。加 ?stream 退回流式叙事。 -->
-<link rel="stylesheet" href="/board.css?v=3">
+<link rel="stylesheet" href="/board.css?v=4">
 </head>
 <body>
 <div id="app" class="hidden">
@@ -18,6 +18,8 @@
   <!-- v1.33 新布局：世界（场景）/ 此刻（叙事）/ 注意到（感知）/ 行动 —— 四层，无并列面板 -->
   <main id="layout">
     <section id="world"></section>
+    <!-- v3.20 当前状态简介：常驻在叙事流**之外**（不用翻到最上面），由 board.js 每回合重画 -->
+    <section id="brief" class="hidden"></section>
     <section id="now"></section>
   </main>
   <footer id="dock">
@@ -97,8 +99,8 @@
   });
 })();
 </script>
-<script src="/app.js?v=118"></script>
-<script src="/board.js?v=5"></script>
+<script src="/app.js?v=130"></script>
+<script src="/board.js?v=6"></script>
 <script src="/studio.js?v=7"></script>
 </body>
 </html>
